@@ -362,6 +362,59 @@ body.is-day .stage-bg::after{
 .msg{margin-bottom:15px;animation:rise .32s var(--ease)}
 @keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 
+/* 当前发言者高亮 */
+.msg.speech.speaking{
+  box-shadow:0 0 0 1px rgba(217,169,75,.4),0 0 24px rgba(217,169,75,.15);
+  animation:speakingPulse 1.6s ease-in-out infinite;
+}
+@keyframes speakingPulse{
+  0%,100%{box-shadow:0 0 0 1px rgba(217,169,75,.4),0 0 24px rgba(217,169,75,.15)}
+  50%{box-shadow:0 0 0 1px rgba(217,169,75,.7),0 0 36px rgba(217,169,75,.28)}
+}
+
+/* 死亡动画 */
+.msg.death{
+  animation:deathIn .5s var(--ease);
+}
+@keyframes deathIn{
+  0%{opacity:0;transform:scale(.9) translateY(10px);filter:blur(4px)}
+  60%{opacity:1;transform:scale(1.02)}
+  100%{opacity:1;transform:scale(1);filter:blur(0)}
+}
+
+/* 投票结果动画 */
+.votebox{animation:voteIn .4s var(--ease)}
+@keyframes voteIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.vote-row .v-fill{transition:width .6s cubic-bezier(.2,.8,.2,1)}
+
+/* 心跳效果（紧张时刻） */
+.heartbeat{animation:heartbeat 1.2s ease-in-out infinite}
+@keyframes heartbeat{
+  0%,100%{transform:scale(1)}
+  14%{transform:scale(1.08)}
+  28%{transform:scale(1)}
+  42%{transform:scale(1.05)}
+  70%{transform:scale(1)}
+}
+
+/* 身份牌翻转 */
+.role-card{perspective:800px}
+.role-card-inner{transition:transform .6s cubic-bezier(.2,.8,.2,1);transform-style:preserve-3d}
+.role-card.flipped .role-card-inner{transform:rotateY(180deg)}
+.role-front,.role-back{backface-visibility:hidden}
+.role-back{transform:rotateY(180deg)}
+
+/* 昼夜切换过渡 */
+body{transition:background .8s var(--ease)}
+body.night-mode{background:linear-gradient(180deg,#05070b 0%,#0a0e18 100%)}
+body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
+
+/* 打字机效果 */
+.typing::after{
+  content:'▋';animation:blink .8s step-end infinite;color:var(--gold);
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
 .msg.phase{text-align:center;margin:34px 0 26px;position:relative}
 .msg.phase .p-main{
   font-family:var(--serif);font-size:26px;font-weight:600;letter-spacing:.42em;
@@ -860,6 +913,16 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   animation:askIn .24s var(--ease);
 }
 @keyframes askIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ask.mini .ask-hint,
+.ask.mini .ask-body,
+.ask.mini .ask-foot{display:none}
+.ask.mini .ask-card{padding:8px 14px}
+.ask-mini{
+  background:none;border:none;color:var(--text-3);font-size:14px;cursor:pointer;
+  padding:2px 6px;border-radius:4px;flex:none;transition:.2s;
+}
+.ask-mini:hover{color:var(--gold);background:var(--gold-dim)}
+.ask.mini .ask-mini{transform:rotate(180deg)}
 .ask-card{
   max-width:640px;margin:0 auto;background:rgba(13,17,25,.97);
   border:1px solid rgba(217,169,75,.32);border-radius:12px;padding:13px 14px;
@@ -912,9 +975,14 @@ body.player-view .whisper{display:none!important}
   width:min(430px,100%);padding:22px 20px;border-radius:16px;text-align:center;
   background:linear-gradient(180deg,#151c29,#0d1219);
   border:1px solid rgba(217,169,75,.35);box-shadow:0 24px 70px rgba(0,0,0,.72);
-  animation:dealIn .42s cubic-bezier(.2,.9,.25,1);
+  animation:dealFlip .6s cubic-bezier(.2,.9,.25,1);
+  transform-style:preserve-3d;
 }
-@keyframes dealIn{from{opacity:0;transform:translateY(18px) scale(.94)}to{opacity:1;transform:none}}
+@keyframes dealFlip{
+  0%{opacity:0;transform:rotateY(90deg) scale(.8)}
+  60%{opacity:1;transform:rotateY(-8deg) scale(1.02)}
+  100%{opacity:1;transform:rotateY(0) scale(1)}
+}
 .deal-ico{font-size:42px;line-height:1}
 .deal-role{font-size:21px;font-weight:800;letter-spacing:.1em;margin:9px 0 3px}
 .deal-camp{font-size:11px;color:var(--text-3);letter-spacing:.16em}
@@ -1117,6 +1185,7 @@ body.player-view .whisper{display:none!important}
           <span class="ask-who" id="askWho">轮到你</span>
           <span class="ask-tip" id="askTip"></span>
           <span class="ask-timer" id="askTimer"></span>
+          <button class="ask-mini" id="askMini" title="收起看发言">▾</button>
         </div>
         <div class="ask-hint hide" id="askHint"></div>
         <div class="ask-body" id="askBody"></div>
@@ -1679,7 +1748,14 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
       const data = await res.json();
       trackUsage(data.usage);
       const msg = data.choices && data.choices[0] && data.choices[0].message;
-      const content = (msg && typeof msg.content === 'string' ? msg.content : '') || (msg && typeof msg.reasoning_content === 'string' ? msg.reasoning_content : '');
+      let content = msg && typeof msg.content === 'string' ? msg.content : '';
+      const reasoning = msg && typeof msg.reasoning_content === 'string' ? msg.reasoning_content : '';
+      // 深度思考模型：content为空但有思考过程，说明token不够没说完，自动加token重试一次
+      if (!content.trim() && reasoning.trim() && attempt < 2 && body.max_tokens < 800) {
+        body.max_tokens = Math.min(800, body.max_tokens * 2);
+        continue;
+      }
+      if (!content.trim()) content = reasoning; // 实在没有最终回答就用思考内容兜底
       if (!content.trim()) throw new Error('模型返回空内容');
       if (runId !== RUN) throw new StopGame();
       return content.trim();
@@ -2088,7 +2164,12 @@ function askHuman(kind, opts) {
     tip.textContent = o.tip || '';
     body.innerHTML = '';
     foot.innerHTML = '';
+    box.classList.remove('mini');
     box.style.display = '';
+    const miniBtn = $('askMini');
+    if (miniBtn) {
+      miniBtn.onclick = () => box.classList.toggle('mini');
+    }
     SFX.turn();
 
     const hintEl = $('askHint');
@@ -2543,7 +2624,7 @@ function sysPrompt(p, opts) {
     '',
     '表达要求',
     '用第一人称中文口语说话，像真人坐在牌桌上，带着你这个人的脾气和习惯。',
-    '全程只说简体中文。别人用什么语言都别跟着变，不要在中文里夹杂英文单词。',
+    '【重要】最终输出必须是简体中文，一个英文单词都不能有。即使你用其他语言思考，最终说出来的话也必须全是中文。',
     '不要出现元叙述，例如提到自己是 AI、模型、提示词或设定。',
     '不要使用标题、编号列表、括号补充。',
     '提到其他人时用座位号加名字，例如 3 号苏晚。',
@@ -2845,7 +2926,7 @@ function msgError(text) {
 function msgSpeech(p, tag) {
   // 未揭晓前不给狼人上红边，免得从配色上看穿底牌
   const wolf = (S && S.revealed && isWolfRole(p.role)) ? ' wolf' : '';
-  const node = addNode('msg speech' + wolf,
+  const node = addNode('msg speech speaking' + wolf,
     '<div class="s-head">' +
       '<span class="s-seat">' + p.seat + '</span>' +
       '<span class="s-name">' + esc(p.name) + '</span>' +
@@ -2862,6 +2943,7 @@ function msgSpeech(p, tag) {
 
   return {
     set(text, whisper) {
+      node.classList.remove('speaking');
       bodyEl.textContent = text;
       if (whisper && CFG.showWhisper && !secretsHidden()) {
         whisperEl.textContent = whisper;
@@ -2893,6 +2975,8 @@ function setPhasePill(kind, text) {
 function setStage(kind, title, sub) {
   $('stage').className = 'stage' + (kind === 'day' ? ' day' : '');
   document.body.classList.toggle('is-day', kind === 'day');
+  document.body.classList.toggle('day-mode', kind === 'day');
+  document.body.classList.toggle('night-mode', kind === 'night');
   const label = kind === 'night' ? '夜晚' : kind === 'day' ? '白天' : '准备就绪';
   setPhasePill(kind, label);
   if (title) $('roundText').textContent = title;
@@ -3621,7 +3705,7 @@ async function nightPhase(id) {
       const line = '第 ' + S.round + ' 夜，' + p.seat + ' 号 ' + p.name + ' 出局。';
       S.news.push(line);
       S.history.push(line);
-      msgEvent('💀', line, 'hot');
+      msgEvent('💀', line, 'hot death');
       deathBeat(d.reason === 'wolf' ? 'wolf' : 'poison');
       if (p.human) { lockView(false); setTimeout(() => SFX.warn(), 800); }
       if (S.lastDeathSeat == null || p.seat < S.lastDeathSeat) S.lastDeathSeat = p.seat;
@@ -4018,7 +4102,15 @@ function renderVoteBox(picks, tally) {
       return esc((p ? p.name : seat) + ' 得票来自 ' + (from || '无'));
     }).join('<br>') + '</div>';
 
-  addNode('msg votebox', html);
+  const node = addNode('msg votebox', html);
+  // 条形图动画：先0，再延迟展开
+  requestAnimationFrame(() => {
+    node.querySelectorAll('.v-fill').forEach((el, i) => {
+      const w = el.style.width;
+      el.style.width = '0%';
+      setTimeout(() => { el.style.width = w; }, 80 + i * 120);
+    });
+  });
   SFX.gavel();
   scrollFeed(true);
 }
