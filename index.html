@@ -1144,6 +1144,7 @@ body.player-view .whisper{display:none!important}
   </div>
   <div class="topactions">
     <button class="icon-btn on" id="soundBtn" title="环境音效" aria-label="环境音效" aria-pressed="true">🔊</button>
+    <button class="icon-btn" id="ttsBtn" title="语音播报发言" aria-label="语音播报" aria-pressed="false">🔈</button>
     <button class="icon-btn" id="fastBtn" title="快进，按 F 也能切">快进</button>
     <button class="icon-btn" id="noteBtn" title="记牌板：票型、狼面分、随手记">笔记</button>
     <button class="icon-btn on" id="viewBtn" title="切换观众视角与选手视角">上帝视角</button>
@@ -1321,7 +1322,26 @@ body.player-view .whisper{display:none!important}
       <div class="grp-body">
         <label class="check"><input type="checkbox" id="godLog" checked> 记录夜间行动明细</label>
         <label class="check"><input type="checkbox" id="showWhisper" checked> 显示玩家的内心独白</label>
-        <div class="hint">夜间明细与心声只在上帝视角出现，不会写进任何玩家的提示词。</div>
+        <label class="check"><input type="checkbox" id="ttsEnabled"> 语音播报发言</label>
+        <div class="row2" style="margin-top:9px">
+          <div class="field">
+            <label>语音语速</label>
+            <select class="sel" id="ttsRate">
+              <option value="0.8">慢</option>
+              <option value="1" selected>正常</option>
+              <option value="1.2">快</option>
+              <option value="1.5">很快</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>播报内容</label>
+            <select class="sel" id="ttsScope">
+              <option value="speech" selected>只播报发言</option>
+              <option value="all">发言+系统消息</option>
+            </select>
+          </div>
+        </div>
+        <div class="hint">夜间明细与心声只在上帝视角出现，不会写进任何玩家的提示词。语音用浏览器内置合成，不需要额外密钥。</div>
       </div>
     </details>
 
@@ -1653,6 +1673,9 @@ function saveCfg() {
       poolv: POOL_VERSION,
       remember: $('rememberKey').checked,
       sound: (typeof SFX !== 'undefined') ? SFX.enabled : true,
+      tts: (typeof TTS !== 'undefined') ? TTS.enabled : false,
+      ttsRate: (typeof TTS !== 'undefined') ? TTS.rate : 1,
+      ttsScope: (typeof TTS !== 'undefined') ? TTS.scope : 'speech',
       pool: POOL.map(p => ({
         provider: p.provider, model: p.model, base: p.base,
         key: $('rememberKey').checked ? p.key : ''
@@ -1693,6 +1716,23 @@ function loadCfg() {
       SFX.setEnabled(false);
       const b = $('soundBtn');
       if (b) { b.textContent = '🔇'; b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
+    }
+    if (c.tts) {
+      TTS.setEnabled(true);
+      const b = $('ttsBtn');
+      if (b) { b.textContent = '🔊'; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
+      const cb = $('ttsEnabled');
+      if (cb) cb.checked = true;
+    }
+    if (c.ttsRate) {
+      TTS.setRate(c.ttsRate);
+      const sel = $('ttsRate');
+      if (sel) sel.value = c.ttsRate;
+    }
+    if (c.ttsScope) {
+      TTS.setScope(c.ttsScope);
+      const sel = $('ttsScope');
+      if (sel) sel.value = c.ttsScope;
     }
   }
   if (!POOL.length) POOL = defaultPool();
@@ -2979,6 +3019,8 @@ function msgSpeech(p, tag) {
         whisperEl.style.display = 'none';
       }
       scrollFeed(true);
+      // 语音播报
+      if (TTS.enabled) TTS.speech(text, p.name);
     }
   };
 }
@@ -3139,6 +3181,74 @@ const SFX = (() => {
     lose() {
       [220, 175, 130].forEach((f, i) =>
         tone({ f, f2: f * 0.85, dur: 0.9, gain: 0.055, type: 'sine', delay: i * 0.14 }));
+    }
+  };
+})();
+
+/* ============================================================
+   语音播报（TTS）
+   ============================================================ */
+const TTS = (() => {
+  let enabled = false;
+  let rate = 1;
+  let scope = 'speech';
+  let currentUtter = null;
+  let zhVoice = null;
+
+  function pickVoice() {
+    if (!window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    // 优先选中文语音
+    zhVoice = voices.find(v => /zh|cmn|chinese/i.test(v.lang)) ||
+              voices.find(v => /zh/i.test(v.name)) ||
+              voices[0] || null;
+    return zhVoice;
+  }
+
+  if (window.speechSynthesis) {
+    pickVoice();
+    window.speechSynthesis.onvoiceschanged = pickVoice;
+  }
+
+  function speak(text, opts) {
+    if (!enabled || !window.speechSynthesis || !text) return;
+    const o = opts || {};
+    // 停止当前播报
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = o.rate || rate;
+    utter.pitch = o.pitch || 1;
+    utter.volume = 1;
+    utter.lang = 'zh-CN';
+    if (zhVoice) utter.voice = zhVoice;
+    currentUtter = utter;
+    window.speechSynthesis.speak(utter);
+  }
+
+  function stop() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    currentUtter = null;
+  }
+
+  function skip() {
+    stop();
+  }
+
+  return {
+    setEnabled(v) { enabled = v; if (!v) stop(); },
+    get enabled() { return enabled; },
+    setRate(v) { rate = Number(v) || 1; },
+    setScope(v) { scope = v; },
+    get scope() { return scope; },
+    speak, stop, skip,
+    speech(text, name) {
+      if (!enabled || scope !== 'all' && scope !== 'speech') return;
+      const prefix = name ? (name + '说：') : '';
+      speak(prefix + text);
+    },
+    sys(text) {
+      if (!enabled || scope !== 'all') return;
+      speak(text, { rate: rate * 0.9, pitch: 0.9 });
     }
   };
 })();
@@ -4535,6 +4645,7 @@ function stopGame() {
   if (!S) return;
   RUN++;
   PAUSED = false;
+  TTS.stop();
   $('pauseBtn').disabled = true;
   $('stopBtn').disabled = true;
   if ($('stopBtn2')) $('stopBtn2').disabled = true;
@@ -4554,6 +4665,7 @@ function stopGame() {
 function resetUI() {
   RUN++;
   PAUSED = false;
+  TTS.stop();
   S = null;
   NOTES = {};
   lockView(false);
@@ -4616,6 +4728,44 @@ $('soundBtn').addEventListener('click', () => {
   b.setAttribute('aria-pressed', String(on));
   saveCfg();
   if (on) SFX.vote();
+});
+
+/* 语音播报 */
+$('ttsBtn').addEventListener('click', () => {
+  const on = !TTS.enabled;
+  TTS.setEnabled(on);
+  const b = $('ttsBtn');
+  b.textContent = on ? '🔊' : '🔈';
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+  const cb = $('ttsEnabled');
+  if (cb) cb.checked = on;
+  saveCfg();
+  if (on) TTS.speak('语音播报已开启');
+});
+$('ttsBtn').addEventListener('dblclick', () => {
+  TTS.skip();
+  toast('已跳过当前播报');
+});
+const ttsCb = $('ttsEnabled');
+if (ttsCb) ttsCb.addEventListener('change', () => {
+  TTS.setEnabled(ttsCb.checked);
+  const b = $('ttsBtn');
+  if (b) {
+    b.textContent = ttsCb.checked ? '🔊' : '🔈';
+    b.classList.toggle('on', ttsCb.checked);
+  }
+  saveCfg();
+});
+const ttsRateSel = $('ttsRate');
+if (ttsRateSel) ttsRateSel.addEventListener('change', () => {
+  TTS.setRate(ttsRateSel.value);
+  saveCfg();
+});
+const ttsScopeSel = $('ttsScope');
+if (ttsScopeSel) ttsScopeSel.addEventListener('change', () => {
+  TTS.setScope(ttsScopeSel.value);
+  saveCfg();
 });
 $('importBtn').addEventListener('click', importRoles);
 $('restoreBtn').addEventListener('click', () => {
