@@ -1,0 +1,8 @@
+# 测试脚手架与临时产物，不进仓库
+_dev/
+overview.md
+AI狼人杀-原版备份.html
+
+# 系统垃圾
+Thumbs.db
+.DS_Store
