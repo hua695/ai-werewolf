@@ -1050,7 +1050,7 @@ const PROVIDERS = {
     models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6'], keyHint: 'sk-...'
   },
   zhipu: {
-    name: '智谱 GLM', short: 'GLM', base: 'https://open.bigmodel.cn/api/paas/v4',
+    name: '智谱 GLM', short: 'GLM', base: '/api/proxy?target=https://open.bigmodel.cn/api/paas/v4',
     models: ['glm-5.3-flash', 'glm-5.3', 'glm-5.2'], keyHint: '...'
   },
   qwen: {
@@ -1058,7 +1058,7 @@ const PROVIDERS = {
     models: ['qwen3.8-flash', 'qwen3.8-max', 'qwen3.7-plus'], keyHint: 'sk-...'
   },
   hunyuan: {
-    name: '腾讯混元', short: '混元', base: 'https://billowing-wildflower-a104.1729279915.workers.dev/v1',
+    name: '腾讯混元', short: '混元', base: '/api/proxy?target=https://tokenhub.tencentmaas.com/v1',
     models: ['hy4-preview', 'hy3', 'hunyuan-role-latest'], keyHint: 'sk-...'
   },
   ollama: {
