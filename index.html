@@ -671,6 +671,143 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 .msg.seatdrop .sd-txt b{color:var(--text);font-weight:600;letter-spacing:.04em}
 .msg.seatdrop .sd-txt i{font-style:normal;color:var(--text-3);font-size:10.5px}
 
+/* ══════════ 玩法切换 ══════════ */
+.mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.mode-btn{
+  padding:9px 4px;border-radius:8px;border:1px solid var(--line);background:var(--ink-600);
+  color:var(--text-3);font-size:11.5px;font-family:inherit;font-weight:600;cursor:pointer;
+  transition:.18s var(--ease);letter-spacing:.02em;
+}
+.mode-btn:hover{color:var(--text-2);border-color:#333d51}
+.mode-btn.active{
+  color:var(--gold);border-color:rgba(217,169,75,.5);
+  background:linear-gradient(180deg,rgba(217,169,75,.16),rgba(217,169,75,.06));
+  box-shadow:0 0 0 1px rgba(217,169,75,.14) inset;
+}
+.diff-switch{grid-template-columns:1fr 1fr 1fr;gap:6px}
+.diff-switch .mode-btn{padding:7px 2px;font-size:11px;letter-spacing:0}
+#diffField .hint{margin-top:0;line-height:1.6}
+/* 休闲模式的提示条 */
+.ask-hint{
+  display:flex;gap:6px;align-items:flex-start;margin-bottom:9px;padding:7px 9px;
+  border-radius:7px;background:rgba(217,169,75,.08);border:1px solid rgba(217,169,75,.2);
+  font-size:11.5px;color:#cfb478;line-height:1.55;
+}
+.ask-hint b{color:var(--gold);font-weight:700;flex:none}
+.ask-hint.hide{display:none}
+
+/* ══════════ 轮到你 ══════════ */
+.ask{
+  position:absolute;left:0;right:0;bottom:44px;z-index:20;padding:0 14px 12px;
+  animation:askIn .24s var(--ease);
+}
+@keyframes askIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ask-card{
+  max-width:640px;margin:0 auto;background:rgba(13,17,25,.97);
+  border:1px solid rgba(217,169,75,.32);border-radius:12px;padding:13px 14px;
+  box-shadow:0 18px 46px rgba(0,0,0,.6);backdrop-filter:blur(12px);
+}
+.ask-head{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.ask-who{font-size:12.5px;font-weight:700;color:var(--gold);letter-spacing:.06em}
+.ask-tip{font-size:11px;color:var(--text-3);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ask-card .ta{min-height:64px;font-size:13px;line-height:1.7}
+.ask-foot{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+.ask-foot .btn{width:auto;flex:1;padding:8px 14px;font-size:12.5px;min-width:88px}
+.ask-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:7px}
+.ask-seat{
+  padding:9px 6px;border-radius:7px;border:1px solid var(--line);background:var(--ink-600);
+  color:var(--text-2);font-size:12px;cursor:pointer;transition:.16s;font-family:inherit;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ask-seat:hover{border-color:rgba(217,169,75,.55);color:var(--gold);background:var(--gold-dim)}
+.ask-seat.arm{border-color:rgba(217,86,63,.8);color:#f0917c;background:rgba(217,86,63,.16)}
+.ask-seat.pass{grid-column:span 2;color:var(--text-3)}
+.ask-seat small{display:block;font-size:9.5px;color:var(--text-3);margin-top:2px}
+.ask-count{font-size:10.5px;color:var(--text-3);text-align:right;margin-top:4px}
+.ask-count b{color:var(--gold);font-weight:600}
+.ask-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.ask-quick button{
+  padding:5px 9px;border-radius:14px;border:1px solid var(--line);background:transparent;
+  color:var(--text-3);font-size:11px;font-family:inherit;cursor:pointer;transition:.16s;
+}
+.ask-quick button:hover{color:var(--gold);border-color:rgba(217,169,75,.45)}
+.ask-timer{font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums;flex:none}
+.ask-timer.warn{color:#e0846b}
+.ask-card .ta.tall{min-height:104px}
+
+/* 选手视角下心声一律不可见，参与模式在出局前也看不到 */
+body.player-view .whisper{display:none!important}
+
+/* 狼队内部消息：只有狼人玩家能看见 */
+.msg.event.wolfteam{
+  border-left:2px solid rgba(217,86,63,.7);background:rgba(217,86,63,.08);
+  color:#e2b2a8;
+}
+
+/* 发牌幕布 */
+.deal{
+  position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(6,9,14,.86);backdrop-filter:blur(6px);
+}
+.deal[hidden]{display:none}
+.deal-card{
+  width:min(430px,100%);padding:22px 20px;border-radius:16px;text-align:center;
+  background:linear-gradient(180deg,#151c29,#0d1219);
+  border:1px solid rgba(217,169,75,.35);box-shadow:0 24px 70px rgba(0,0,0,.72);
+  animation:dealIn .42s cubic-bezier(.2,.9,.25,1);
+}
+@keyframes dealIn{from{opacity:0;transform:translateY(18px) scale(.94)}to{opacity:1;transform:none}}
+.deal-ico{font-size:42px;line-height:1}
+.deal-role{font-size:21px;font-weight:800;letter-spacing:.1em;margin:9px 0 3px}
+.deal-camp{font-size:11px;color:var(--text-3);letter-spacing:.16em}
+.deal-skill{
+  margin-top:14px;padding:11px 12px;border-radius:9px;background:rgba(255,255,255,.045);
+  font-size:12.5px;color:var(--text-2);line-height:1.75;text-align:left;
+}
+.deal-rules{margin-top:10px;font-size:11.5px;color:var(--text-3);line-height:1.8;text-align:left}
+.deal-rules b{color:#cfb478;font-weight:700}
+.deal-btn{margin-top:15px;width:100%}
+
+/* 记牌板 */
+.note-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line)}
+.note-row:last-child{border-bottom:none}
+.note-who{
+  width:86px;flex:none;font-size:12px;color:var(--text-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.note-who.out{color:var(--text-3);text-decoration:line-through}
+.note-stars{display:flex;gap:1px;flex:none}
+.note-star{
+  border:none;background:none;padding:0 1px;font-size:14px;line-height:1;
+  color:#3a4356;cursor:pointer;transition:.14s;
+}
+.note-star.on{color:var(--gold)}
+.note-input{
+  flex:1;min-width:0;padding:5px 7px;border-radius:6px;border:1px solid var(--line);
+  background:var(--ink-600);color:var(--text-2);font-size:11.5px;font-family:inherit;
+}
+.note-input:focus{outline:none;border-color:rgba(217,169,75,.45)}
+.note-sec{margin-bottom:14px}
+.note-sec h4{font-size:11px;color:var(--text-3);letter-spacing:.1em;margin:0 0 8px;font-weight:600}
+.note-log{font-size:11.5px;color:var(--text-3);line-height:1.95}
+.note-log i{font-style:normal;color:var(--text-2)}
+@media (max-width:560px){
+  .note-row{flex-wrap:wrap;gap:5px 8px}
+  .note-who{width:auto;flex:1 1 auto}
+  .note-stars{margin-left:auto}
+  .note-star{font-size:17px;padding:0 2px}
+  .note-input{flex:1 0 100%}
+  .ask-timer{font-size:10.5px}
+}
+
+/* 我自己的座位 */
+.seat-card.me{border-color:rgba(217,169,75,.3);background:rgba(217,169,75,.05)}
+.seat-card.me .seat-name::after{
+  content:'你';font-size:9px;color:var(--gold);border:1px solid rgba(217,169,75,.45);
+  border-radius:3px;padding:0 3px;margin-left:4px;font-weight:400;
+}
+.roster-item.me svg{box-shadow:0 0 0 2px rgba(217,169,75,.45)}
+
 /* ══════════ 响应式 ══════════ */
 .mobile-tabs{display:none}
 @media (max-width:1180px){
@@ -765,6 +902,7 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   <div class="topactions">
     <button class="icon-btn on" id="soundBtn" title="环境音效" aria-label="环境音效" aria-pressed="true">🔊</button>
     <button class="icon-btn" id="fastBtn" title="快进，按 F 也能切">快进</button>
+    <button class="icon-btn" id="noteBtn" title="记牌板：票型、狼面分、随手记">笔记</button>
     <button class="icon-btn on" id="viewBtn" title="切换观众视角与选手视角">上帝视角</button>
     <button class="icon-btn" id="pauseBtn" disabled>暂停</button>
     <button class="icon-btn" id="stopBtn" disabled>停止</button>
@@ -804,6 +942,19 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
       <div class="progress"><i id="progressBar"></i></div>
     </div>
 
+    <div class="ask" id="ask" style="display:none">
+      <div class="ask-card">
+        <div class="ask-head">
+          <span class="ask-who" id="askWho">轮到你</span>
+          <span class="ask-tip" id="askTip"></span>
+          <span class="ask-timer" id="askTimer"></span>
+        </div>
+        <div class="ask-hint hide" id="askHint"></div>
+        <div class="ask-body" id="askBody"></div>
+        <div class="ask-foot" id="askFoot"></div>
+      </div>
+    </div>
+
     <div class="bet-dock" id="betDock" style="display:none">
       <button class="bet-toggle" id="betToggle">
         <span class="bt-ico">🎰</span>押注 <b id="chipText2">100</b>
@@ -813,6 +964,33 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   </main>
 
   <aside class="panel right" id="rightPanel">
+    <details class="grp" open>
+      <summary>玩法</summary>
+      <div class="grp-body">
+        <div class="mode-switch" id="modeSwitch">
+          <button class="mode-btn active" data-mode="watch">观战 · 全交给 AI</button>
+          <button class="mode-btn" data-mode="play">参与 · 我坐一桌</button>
+        </div>
+        <div class="field" id="humanSeatField" style="display:none;margin-top:10px">
+          <label>我坐几号位</label>
+          <select class="sel" id="humanSeat"></select>
+        </div>
+        <div class="field" id="diffField" style="display:none;margin-top:10px">
+          <label>难度</label>
+          <div class="mode-switch diff-switch" id="diffSwitch">
+            <button class="mode-btn" data-diff="casual">休闲</button>
+            <button class="mode-btn active" data-diff="standard">标准</button>
+            <button class="mode-btn" data-diff="hard">硬核</button>
+          </div>
+          <div class="hint" id="diffHint" style="margin-top:7px"></div>
+        </div>
+        <div class="btn-row" id="myCardRow" style="display:none">
+          <button class="btn ghost" id="myCardBtn">看我的底牌</button>
+        </div>
+        <div class="hint" id="modeHint">观战模式：你只负责看、押注、翻别人的档案。</div>
+      </div>
+    </details>
+
     <details class="grp" open>
       <summary>模型池</summary>
       <div class="grp-body">
@@ -950,6 +1128,27 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   </div>
 </div>
 
+<div class="modal" id="noteModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>我的记牌板</h3>
+      <button class="icon-btn" id="noteClose">关闭</button>
+    </div>
+    <div class="modal-body" id="noteBody"></div>
+  </div>
+</div>
+
+<div class="deal" id="deal" hidden>
+  <div class="deal-card">
+    <div class="deal-ico" id="dealIco">🂠</div>
+    <div class="deal-role" id="dealRole">你的身份</div>
+    <div class="deal-camp" id="dealCamp">好人阵营</div>
+    <div class="deal-skill" id="dealSkill"></div>
+    <div class="deal-rules" id="dealRules"></div>
+    <button class="btn primary deal-btn" id="dealOk">收好底牌，开始</button>
+  </div>
+</div>
+
 
 <script>
 'use strict';
@@ -1029,6 +1228,9 @@ const DEFAULT_SEATS = [
 let S = null;                 // 对局状态
 let RUN = 0;                  // 运行代际，用于中止旧循环
 let PAUSED = false;
+let MODE = 'watch';           // watch 观战 / play 自己坐一桌
+let HUMAN = 1;                // 我坐几号位
+let DIFF = 'standard';        // casual 休闲 / standard 标准 / hard 硬核（仅参与模式生效）
 let CALL_STATS = { calls: 0, prompt: 0, completion: 0 };
 class StopGame extends Error { constructor(){ super('stopped'); } }
 
@@ -1156,6 +1358,10 @@ function specTiny(spec) {
   return p.short + ' ' + m;
 }
 
+/* 按座位取标签：自己的座位显示“本人” */
+function seatModel(s) { return s && s.human ? '本人上场' : specLabel(s && s.spec); }
+function seatModelShort(s) { return s && s.human ? '本人' : specTiny(s && s.spec); }
+
 /* 把模型池随机铺到座位上，池子不够就循环，保证每家都有出场机会 */
 function assignSpecs(n) {
   const u = usablePool();
@@ -1183,7 +1389,10 @@ function readCfg() {
     autoPace: paceRaw === 'auto',
     godLog: $('godLog').checked,
     showWhisper: $('showWhisper') ? $('showWhisper').checked : true,
-    autoIdentity: $('autoIdentity') ? $('autoIdentity').checked : true
+    autoIdentity: $('autoIdentity') ? $('autoIdentity').checked : true,
+    mode: MODE,
+    humanSeat: HUMAN,
+    diff: DIFF
   };
 }
 let CFG = readCfg();
@@ -1195,6 +1404,7 @@ function saveCfg() {
       temp: c.temp, conc: c.conc, timeout: c.timeout / 1000,
       allowNoKey: c.allowNoKey, speechLen: c.speechLen, paceRaw: c.paceRaw,
       godLog: c.godLog, showWhisper: c.showWhisper, autoIdentity: c.autoIdentity,
+      mode: c.mode, humanSeat: c.humanSeat, diff: c.diff,
       poolv: POOL_VERSION,
       remember: $('rememberKey').checked,
       sound: (typeof SFX !== 'undefined') ? SFX.enabled : true,
@@ -1219,6 +1429,9 @@ function loadCfg() {
     if (c.godLog != null) $('godLog').checked = !!c.godLog;
     if (c.showWhisper != null && $('showWhisper')) $('showWhisper').checked = !!c.showWhisper;
     if (c.autoIdentity != null && $('autoIdentity')) $('autoIdentity').checked = !!c.autoIdentity;
+    if (c.mode) MODE = c.mode === 'play' ? 'play' : 'watch';
+    if (c.humanSeat) HUMAN = Math.max(1, Number(c.humanSeat) || 1);
+    if (c.diff) DIFF = ['casual', 'standard', 'hard'].includes(c.diff) ? c.diff : 'standard';
     if (c.remember) $('rememberKey').checked = true;
     if (Array.isArray(c.pool) && c.pool.length) POOL = c.pool.map(p => ({ ...p }));
     // 模型名升级：旧版本存的模型名已下线，换成本家当前默认
@@ -1239,6 +1452,7 @@ function loadCfg() {
   }
   if (!POOL.length) POOL = defaultPool();
   renderPool();
+  renderModeUI();
 }
 
 /* ============================================================
@@ -1541,7 +1755,7 @@ function renderBetPanel() {
       BET.chips -= 10;
       BET.round = { seat, round: S.round };
       BET.log.push('第 ' + S.round + ' 天押 ' + seat + ' 号出局');
-      SFX.vote();
+      SFX.coin();
       updateChips();
       renderBetPanel();
     });
@@ -1553,7 +1767,7 @@ function renderBetPanel() {
       BET.chips -= 20;
       BET.final = camp;
       BET.log.push('押终局 ' + (camp === 'good' ? '好人' : '狼人') + '胜');
-      SFX.vote();
+      SFX.coin();
       updateChips();
       renderBetPanel();
     });
@@ -1566,7 +1780,7 @@ function settleRoundBet(outSeat) {
     BET.chips += 25;
     BET.log.push('押中 ' + outSeat + ' 号，回 25');
     toast('押中！筹码 +15');
-    SFX.vote();
+    SFX.coin();
   } else if (outSeat == null) {
     BET.chips += 10;
     BET.log.push('平票退还 10');
@@ -1588,6 +1802,506 @@ function settleFinalBet(winner) {
   }
   BET.final = null;
   updateChips();
+}
+
+/* ============================================================
+   两种玩法：观战 / 自己坐一桌
+   ============================================================ */
+const HUMAN_NAME = '你';
+let ASK = null;
+
+function isMe(p) { return MODE === 'play' && HUMAN > 0 && !!p && p.seat === HUMAN; }
+
+function isPlayerView() { return document.body.classList.contains('player-view'); }
+function humanSeatP() { return (MODE === 'play' && S) ? seatOf(HUMAN) : null; }
+function humanAlive() { const h = humanSeatP(); return !!(h && h.alive); }
+/* 后台信息（心声、夜间明细、狼队内部消息）什么时候该藏起来 */
+function secretsHidden() { return isPlayerView() || (MODE === 'play' && humanAlive()); }
+
+/* 参与模式锁死选手视角，出局后才允许看全图 */
+function lockView(lock) {
+  const b = $('viewBtn');
+  document.body.classList.toggle('player-view', !!lock);
+  if (!b) return;
+  b.disabled = !!lock;
+  b.textContent = lock ? '选手视角' : '上帝视角';
+  b.classList.toggle('on', !lock);
+  b.title = lock ? '参与模式下锁定选手视角，出局后自动解锁' : '切换观众视角与选手视角';
+}
+
+/* 夜里干活的提示对闭眼玩家要模糊掉 */
+function nightStatus(text, spinning) {
+  if (MODE === 'play' && humanAlive()) {
+    setStatus('夜晚进行中，闭眼等着天亮…', true);
+    return;
+  }
+  setStatus(text, spinning);
+}
+
+function hideAsk() {
+  const a = $('ask');
+  if (a) a.style.display = 'none';
+  if (ASK && ASK.timer) { clearInterval(ASK.timer); ASK.timer = null; }
+  const t = $('askTimer');
+  if (t) { t.textContent = ''; t.classList.remove('warn'); }
+}
+
+function stopAskTimer() {
+  if (ASK && ASK.timer) { clearInterval(ASK.timer); ASK.timer = null; }
+}
+
+function cancelAsk() {
+  stopAskTimer();
+  ASK = null;
+  hideAsk();
+}
+
+function answerAsk(v) {
+  if (!ASK) return;
+  stopAskTimer();
+  const r = ASK.resolve;
+  ASK = null;
+  hideAsk();
+  SFX.tick();
+  r(v);
+}
+
+/* 休闲模式的提示：给新手一点抓手，但不替你做决定 */
+function mySeatNow() { return (MODE === 'play' && S) ? seatOf(HUMAN) : null; }
+
+function casualHint(kind, o) {
+  if (MODE !== 'play' || DIFF !== 'casual') return '';
+  const me = mySeatNow();
+  if (!me) return '';
+  const meta = ROLE_META[me.role] || { name: '玩家' };
+  const wolf = isWolfRole(me.role);
+  const alive = aliveSeats();
+  const wolfLeft = alive.filter(s => isWolfRole(s.role)).length;
+
+  if (kind === 'say') {
+    return '<b>提示</b><span>你是 ' + me.seat + ' 号' + meta.name +
+      (wolf ? '，记得把自己说成好人' : '') +
+      '。发言要给判断和依据，卡住了就点下面「帮我起个头」。</span>';
+  }
+  if (kind === 'chat') {
+    return '<b>提示</b><span>跟队友商量刀谁就行，说清理由。场上好人还剩 ' +
+      (alive.length - wolfLeft) + ' 个。</span>';
+  }
+  if (kind === 'witch') {
+    return '<b>提示</b><span>' + (o && o.victimSeat ? o.victimSeat + ' 号今晚倒牌' : '有人今晚倒牌') +
+      '。第一晚就交解药有点浪费，但救到预言家是血赚；毒药留着更值钱。</span>';
+  }
+  if (wolf) {
+    return '<b>提示</b><span>你是' + meta.name + '，别投到自己人。好人还剩 ' +
+      (alive.length - wolfLeft) + ' 个。</span>';
+  }
+  const tip = me.role === 'SEER' ? '优先验那些发言最滑、一直在跟票的人。'
+    : me.role === 'GUARD' ? '别连着两晚守同一个人。'
+    : me.role === 'WITCH' ? '毒药撒出去就收不回，先看清楚局势。'
+    : me.role === 'HUNTER' ? '你出局时能开枪，被投也不亏。'
+    : '投你直觉最可疑的那个，别跟着大部队投。';
+  return '<b>提示</b><span>你是' + meta.name + '，场上还剩 ' + wolfLeft + ' 个狼。' + tip + '</span>';
+}
+
+/* 弹一次提问，等用户点完再继续对局 */
+function askHuman(kind, opts) {
+  const o = opts || {};
+  return new Promise(resolve => {
+    ASK = { resolve, kind };
+    const box = $('ask');
+    const who = $('askWho');
+    const tip = $('askTip');
+    const body = $('askBody');
+    const foot = $('askFoot');
+    if (!box) { resolve(null); return; }
+
+    who.textContent = o.title || '轮到你';
+    tip.textContent = o.tip || '';
+    body.innerHTML = '';
+    foot.innerHTML = '';
+    box.style.display = '';
+    SFX.turn();
+
+    const hintEl = $('askHint');
+    if (hintEl) {
+      const ht = casualHint(kind, o);
+      hintEl.innerHTML = ht;
+      hintEl.classList.toggle('hide', !ht);
+    }
+
+    const cands = o.cands || [];
+    const seatBtn = s =>
+      '<button class="ask-seat" data-pick="' + s.seat + '">' + s.seat + ' 号' +
+        '<small>' + esc(s.name) + '</small></button>';
+
+    /* 操作倒计时：休闲不限时，标准 120 秒，硬核 90 秒；到点按最保守的选择往下走 */
+    const limit = o.limit != null ? Number(o.limit)
+      : (DIFF === 'casual' ? 0 : DIFF === 'hard' ? 90 : 120);
+    const timerEl = $('askTimer');
+    if (timerEl) {
+      timerEl.classList.remove('warn');
+      if (limit > 0) {
+        let left = limit;
+        const paint = () => {
+          timerEl.textContent = left + 's';
+          timerEl.classList.toggle('warn', left <= 10);
+        };
+        paint();
+        ASK.timer = setInterval(() => {
+          left--;
+          if (left <= 0) {
+            stopAskTimer();
+            const dv = kind === 'chat' ? '' : kind === 'witch' ? { save: false, poison: null } : null;
+            answerAsk(dv);
+            return;
+          }
+          paint();
+        }, 1000);
+      } else {
+        timerEl.textContent = '不限时';
+      }
+    }
+
+    if (kind === 'say' || kind === 'chat') {
+      const isSay = kind === 'say';
+      body.innerHTML =
+        '<textarea class="ta' + (isSay ? ' tall' : '') + '" id="askText" maxlength="' +
+          (kind === 'chat' ? 60 : 220) + '" placeholder="' +
+          esc(kind === 'chat' ? '跟队友说一句，比如你想刀谁' : '轮到你说话了，别只报座位号') + '"></textarea>' +
+        '<div class="ask-count" id="askCount"></div>' +
+        (isSay
+          ? '<div class="ask-quick" id="askQuick">' +
+              '<button data-tpl="我是好人，先听完再定。">我是好人</button>' +
+              '<button data-tpl="我跳预言家，昨晚验的人我等下说。">我跳预言家</button>' +
+              '<button data-tpl="我怀疑 ">我怀疑谁</button>' +
+            '</div>'
+          : '');
+      foot.innerHTML =
+        '<button class="btn primary" id="askSend">' + (kind === 'chat' ? '说这句' : '发出去') + '</button>' +
+        '<button class="btn ghost" id="askPass">' + (kind === 'chat' ? '不说话' : '这轮不说') + '</button>';
+      $('askSend').addEventListener('click', () => {
+        const t = $('askText').value.trim();
+        if (!t) { $('askText').focus(); return; }
+        answerAsk(t);
+      });
+      $('askPass').addEventListener('click', () => answerAsk(kind === 'chat' ? '' : null));
+      const ta = $('askText');
+
+      /* 休闲模式：给一段能直接改的开头 */
+      if (kind === 'say' && MODE === 'play' && DIFF === 'casual') {
+        foot.insertAdjacentHTML('beforeend', '<button class="btn ghost" id="askTpl">帮我起个头</button>');
+        $('askTpl').addEventListener('click', () => {
+          const me = mySeatNow();
+          if (!me) return;
+          const others = aliveSeats().filter(s => s.seat !== me.seat);
+          const sus = others.length ? others[Math.floor(Math.random() * others.length)] : null;
+          const sup = others.length > 1 ? others.filter(s => !sus || s.seat !== sus.seat)[0] : null;
+          ta.value = '我是 ' + me.seat + ' 号。先说我的判断：' +
+            (sus ? sus.seat + ' 号' + sus.name + ' 最可疑' : '现在还没抓到明显的狼') +
+            '，因为他的发言一直在跟别人的节奏，没给出自己的依据。' +
+            (sup ? '相对来讲我更愿意信 ' + sup.seat + ' 号，他讲的逻辑是能对上的。' : '') +
+            '如果有人觉得我是狼，欢迎来盘我，我更想知道 ' +
+            (sus ? sus.seat + ' 号' : '刚才带节奏的那位') + ' 为什么急着推人。';
+          ta.focus();
+          ta.setSelectionRange(0, ta.value.length);
+          SFX.tick();
+        });
+      }
+
+      ta.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('askSend').click();
+      });
+
+      const cnt = $('askCount');
+      const maxLen = kind === 'chat' ? 60 : 220;
+      const paintCount = () => {
+        if (!cnt) return;
+        const n = ta.value.length;
+        cnt.innerHTML = '<b>' + n + '</b> / ' + maxLen + (n > maxLen * 0.9 ? ' · 够长了，别灌水' : '');
+      };
+      paintCount();
+      ta.addEventListener('input', paintCount);
+
+      /* 常用语：点一下接在末尾，不用自己想开场 */
+      const quick = $('askQuick');
+      if (quick) quick.addEventListener('click', e => {
+        const b = e.target.closest('[data-tpl]');
+        if (!b) return;
+        const tpl = b.dataset.tpl;
+        ta.value = ta.value ? (ta.value.replace(/\s+$/, '') + ' ' + tpl) : tpl;
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        paintCount();
+        SFX.tick();
+      });
+
+      setTimeout(() => ta.focus(), 60);
+    }
+
+    else if (kind === 'witch') {
+      const poisonCands = o.poisonCands || [];
+      body.innerHTML = '<div class="ask-grid">' + cands.map(seatBtn).join('') + '</div>';
+      foot.innerHTML =
+        '<button class="btn primary" id="askSave">用解药救 ' + (o.victimSeat || '') + ' 号</button>' +
+        '<button class="btn ghost" id="askNone">不用药</button>';
+      if (o.saveUsed) { foot.querySelector('#askSave').disabled = true; foot.querySelector('#askSave').textContent = '解药已用完'; }
+      if (o.poisonUsed) body.querySelectorAll('[data-pick]').forEach(b => b.disabled = true);
+      let armed = null;
+      body.querySelectorAll('[data-pick]').forEach(b => {
+        b.addEventListener('click', () => {
+          if (o.poisonUsed) return;
+          const seat = Number(b.dataset.pick);
+          if (armed !== seat) {
+            armed = seat;
+            body.querySelectorAll('[data-pick]').forEach(x => x.classList.remove('arm'));
+            b.classList.add('arm');
+            tip.textContent = '再点一次 ' + seat + ' 号，确认用毒（毒药只有一瓶）';
+            SFX.warn();
+            return;
+          }
+          answerAsk({ save: false, poison: seat });
+        });
+      });
+      $('askSave').addEventListener('click', () => { if (!o.saveUsed) answerAsk({ save: true, poison: null }); });
+      $('askNone').addEventListener('click', () => answerAsk({ save: false, poison: null }));
+      if (!o.poisonUsed) tip.textContent = (tip.textContent ? tip.textContent + ' · ' : '') + '点一个人就是用毒';
+      else tip.textContent = (tip.textContent ? tip.textContent + ' · ' : '') + '毒药已用完，只能选择救或不救';
+    }
+
+    else {
+      // pick：从候选里点一个
+      body.innerHTML = '<div class="ask-grid">' + cands.map(seatBtn).join('') + '</div>';
+      if (o.passLabel) {
+        foot.innerHTML = '<button class="btn ghost" id="askPass">' + esc(o.passLabel) + '</button>';
+        $('askPass').addEventListener('click', () => answerAsk(null));
+      }
+      body.querySelectorAll('[data-pick]').forEach(b => {
+        b.addEventListener('click', () => answerAsk(Number(b.dataset.pick)));
+      });
+    }
+  });
+}
+
+/* 追问后检查对局是否已被中止 */
+async function askHumanSafe(id, kind, opts) {
+  const v = await askHuman(kind, opts);
+  if (id !== RUN) { hideAsk(); throw new StopGame(); }
+  return v;
+}
+
+/* 只有狼人玩家该看见的队内消息 */
+function packMsg(text, icon) {
+  if (MODE !== 'play' || !S) return;
+  const h = humanSeatP();
+  if (!h || !h.alive || !isWolfRole(h.role)) return;
+  msgEvent(icon || '🐺', text, 'wolfteam');
+}
+
+/* ============================================================
+   发牌：把底牌摊给玩家看
+   ============================================================ */
+const ROLE_SKILL = {
+  WOLF: '每晚和狼队友一起商量刀谁。白天把自己装成好人，把怀疑引到好人身上。',
+  WOLF_KING: '和狼队一起刀人。你出局时（被毒杀除外）可以开枪带走一个存活玩家。',
+  SEER: '每晚查验一个人是不是狼，结果只有你自己知道。想带队就白天跳出来报验人。',
+  WITCH: '解药和毒药各一瓶，同一晚只能用一瓶。解药能救别人也能救自己，毒药直接毒死一个（无视守卫）。',
+  HUNTER: '你出局时（被毒杀除外）可以开枪带走一个存活玩家。',
+  GUARD: '每晚守一个人，被守的人当晚不会被狼刀。不能连续两晚守同一个人，可以守自己。',
+  VILLAGER: '你没有夜间技能，靠白天的发言和投票找狼。别急着跟票，多问几句。'
+};
+
+let DEAL_RESOLVE = null;
+function closeDeal() {
+  if (!DEAL_RESOLVE) return;
+  const f = DEAL_RESOLVE;
+  DEAL_RESOLVE = null;
+  f();
+}
+
+function showDealCard(p) {
+  return new Promise(resolve => {
+    const meta = ROLE_META[p.role] || { name: '玩家', icon: '🂠', color: '#dfae4c' };
+    const wolf = isWolfRole(p.role);
+    $('dealIco').textContent = meta.icon;
+    $('dealRole').textContent = meta.name;
+    $('dealRole').style.color = meta.color;
+    $('dealCamp').textContent = wolf ? '狼人阵营' : '好人阵营';
+    $('dealSkill').textContent = ROLE_SKILL[p.role] || '';
+    $('dealRules').innerHTML =
+      '<b>' + p.seat + ' 号位</b> · ' + (p.human ? '你自己的牌' : '你是「' + esc(p.name) + '」') + '<br>' +
+      '胜负：好人放逐全部狼人获胜；' +
+      (S.winMode === 'parity' ? '狼人杀到存活人数与狼数持平就赢。' : '狼人杀光神职或杀光平民就赢。') + '<br>' +
+      '出局不翻身份牌，死者的身份只在复盘时公开。<br>' +
+      '本局同守同救算平安：守卫和女巫同时保下同一个人，那个人不会死。<br>' +
+      '被毒杀的人不能开枪。';
+    const box = $('deal');
+    box.hidden = false;
+    SFX.reveal();
+    const ok = $('dealOk');
+    const done = () => {
+      ok.removeEventListener('click', done);
+      DEAL_RESOLVE = null;
+      box.hidden = true;
+      SFX.tick();
+      resolve(true);
+    };
+    DEAL_RESOLVE = done;
+    ok.addEventListener('click', done);
+  });
+}
+
+/* ============================================================
+   遗言
+   ============================================================ */
+async function lastWords(p, id, reason) {
+  if (!p) return;
+  await gate(id);
+  S.speaking = p.seat; renderSeats();
+  setStatus(p.human ? '你出局了，留一句遗言' : (p.name + ' 正在留遗言…'), true);
+  const card = msgSpeech(p, '遗言');
+  try {
+    if (p.human) {
+      const txt = await askHumanSafe(id, 'say', {
+        title: '你的遗言',
+        tip: reason + ' · 可以跳身份、可以指认，也可以什么都不说'
+      });
+      card.set(txt || '（没说话，把牌扣在桌上就走了。）');
+      if (txt) S.log.push({ round: S.round, kind: 'lastword', seat: p.seat, name: p.name, text: txt });
+    } else {
+      const raw = await callLLM({
+        system: sysPrompt(p),
+        user: publicState() +
+              '\n\n【遗言】你' + reason + '出局。这是你在牌桌上最后一段话，一到三句：' +
+              '可以指认最可疑的人、可以亮明身份、也可以给活着的人留句话。' +
+              '不要写心声，不要写格式标签，直接说。',
+        runId: id,
+        maxTokens: 320,
+        spec: p.spec
+      });
+      const t = String(raw || '').replace(/【[^】]*】/g, '').trim();
+      card.set(t || '（沉默着离场）');
+      if (t) S.log.push({ round: S.round, kind: 'lastword', seat: p.seat, name: p.name, text: t });
+    }
+  } catch (e) {
+    if (e instanceof StopGame) throw e;
+    card.set('（没留下话）');
+  }
+  S.speaking = null; renderSeats();
+  await beat();
+}
+
+/* ============================================================
+   记牌板：票型 + 狼面分 + 随手记
+   ============================================================ */
+let NOTES = {};
+
+function renderNotes() {
+  if (!S) return;
+  const rows = S.seats.map(s => {
+    const n = NOTES[s.seat] || { score: 0, text: '' };
+    const stars = [1, 2, 3, 4, 5].map(v =>
+      '<button class="note-star' + (n.score >= v ? ' on' : '') +
+      '" data-seat="' + s.seat + '" data-score="' + v + '">★</button>').join('');
+    return '<div class="note-row">' +
+      '<span class="note-who' + (s.alive ? '' : ' out') + '">' + s.seat + ' 号 ' + esc(s.name) + '</span>' +
+      '<span class="note-stars">' + stars + '</span>' +
+      '<input class="note-input" data-seat="' + s.seat + '" value="' + esc(n.text || '') +
+        '" placeholder="' + (s.alive ? '记一句，比如 3 号前后矛盾' : '已出局') + '">' +
+      '</div>';
+  }).join('');
+
+  const votes = S.log.filter(l => l.kind === 'vote').map(v => {
+    const parts = v.picks.map(x => (x.from === HUMAN && MODE === 'play' ? '你' : x.from) +
+      '→' + (x.to == null ? '弃' : x.to)).join('、');
+    return '<div>第 ' + v.round + ' 天' + (v.pk ? ' PK' : '') + '：<i>' + esc(parts) + '</i></div>';
+  }).join('') || '<div>还没有投过票</div>';
+
+  const outs = S.log.filter(l => l.kind === 'out' || l.kind === 'lastword')
+    .slice(-8).map(l => '<div>第 ' + l.round + ' 天 · ' + l.seat + ' 号 ' + esc(l.name) +
+      (l.kind === 'out' ? ' 出局' : ' 遗言') + '</div>').join('') || '<div>还没有人出局</div>';
+
+  $('noteBody').innerHTML =
+    '<div class="note-sec"><h4>逐轮票型</h4><div class="note-log">' + votes + '</div></div>' +
+    '<div class="note-sec"><h4>出局记录</h4><div class="note-log">' + outs + '</div></div>' +
+    '<div class="note-sec"><h4>狼面分（只有你自己看得见）</h4>' + rows + '</div>';
+}
+
+function openNotes() {
+  if (!S) { toast('开局之后才有牌可记'); return; }
+  renderNotes();
+  $('noteModal').classList.add('show');
+}
+
+const DIFF_META = {
+  casual: {
+    label: '休闲',
+    hint: '新手友好：第一夜狼不会动你，轮到你时有提示和发言模板，AI 也不会特意盯你。',
+    advice: true, aiKnows: false, protectFirstNight: true
+  },
+  standard: {
+    label: '标准',
+    hint: '正常规则：没有提示也没有照顾，AI 照常打，全看你自己盘。',
+    advice: false, aiKnows: false, protectFirstNight: false
+  },
+  hard: {
+    label: '硬核',
+    hint: '地狱局：AI 明确知道你是真人，狼队优先解决你，好人也会死盯你每一句话。',
+    advice: false, aiKnows: true, protectFirstNight: false
+  }
+};
+function diffOf() { return DIFF_META[DIFF] || DIFF_META.standard; }
+
+function renderModeUI() {
+  const sw = $('modeSwitch');
+  if (sw) sw.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.mode === MODE);
+  });
+  const f = $('humanSeatField');
+  if (f) f.style.display = MODE === 'play' ? '' : 'none';
+  const df = $('diffField');
+  if (df) df.style.display = MODE === 'play' ? '' : 'none';
+  const ds = $('diffSwitch');
+  if (ds) ds.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.diff === DIFF);
+  });
+  const dh = $('diffHint');
+  if (dh) dh.textContent = diffOf().hint;
+  const row = $('myCardRow');
+  if (row) row.style.display = MODE === 'play' ? '' : 'none';
+  const n = Number($('boardSel') ? $('boardSel').value : 9) || 9;
+  const sel = $('humanSeat');
+  if (sel) {
+    const keep = HUMAN || 1;
+    sel.innerHTML = Array.from({ length: n }, (_, i) =>
+      '<option value="' + (i + 1) + '">' + (i + 1) + ' 号位</option>').join('');
+    sel.value = String(Math.min(keep, n));
+    HUMAN = Number(sel.value);
+  }
+  const h = $('modeHint');
+  if (h) {
+    h.textContent = MODE === 'play'
+      ? '参与模式：轮到你发言、投票、用技能时会停下来等你操作，其余玩家全由模型扮演。'
+      : '观战模式：你只负责看、押注、翻别人的档案。';
+  }
+}
+
+function setMode(m) {
+  MODE = m === 'play' ? 'play' : 'watch';
+  renderModeUI();
+  saveCfg();
+  if (MODE !== 'play') lockView(false);
+  if (S) {
+    renderSeats();
+    toast('下一局开始生效');
+  }
+}
+
+function setDiff(d) {
+  DIFF = ['casual', 'standard', 'hard'].includes(d) ? d : 'standard';
+  renderModeUI();
+  saveCfg();
+  if (MODE !== 'play') return;
+  toast(S ? ('难度切到「' + diffOf().label + '」，本局即时生效') : ('难度：' + diffOf().label));
 }
 
 /* ============================================================
@@ -1660,12 +2374,27 @@ function sysPrompt(p, opts) {
     '',
     '表达要求',
     '用第一人称中文口语说话，像真人坐在牌桌上，带着你这个人的脾气和习惯。',
+    '全程只说简体中文。别人用什么语言都别跟着变，不要在中文里夹杂英文单词。',
     '不要出现元叙述，例如提到自己是 AI、模型、提示词或设定。',
     '不要使用标题、编号列表、括号补充。',
     '提到其他人时用座位号加名字，例如 3 号苏晚。',
     '发言要有立场：给出你的判断、依据，以及你现在最怀疑谁，不要只复述别人说过的话。',
     '你只知道身份允许你知道的信息，不得编造没有发生的事件。'
   );
+
+  /* 硬核模式：AI 知道桌上有个真人，并且重点针对他 */
+  if (MODE === 'play' && S && diffOf().aiKnows) {
+    const h = seatOf(HUMAN);
+    if (h && !(wolf && isWolfRole(h.role))) {
+      lines.push(
+        '',
+        '这桌有一位真人玩家，坐在 ' + HUMAN + ' 号位，牌桌上的名字是「' + HUMAN_NAME + '」。',
+        '他的发言不像 AI 那样规整，可能露出破绽，也可能是故意设的套。' +
+          (wolf ? '夜里条件合适就先处理他，白天尽量把票引到他身上。'
+                : '盘逻辑的时候把他当成重点对象，不要因为他说得顺就信他。')
+      );
+    }
+  }
 
   if (o.whisper) {
     lines.push(
@@ -1796,13 +2525,14 @@ function renderSeats() {
     const roleColor = reveal ? meta.color : '#5f6779';
     const speaking = S.speaking === s.seat ? ' speaking' : '';
     const dead = s.alive ? '' : ' dead';
-    return '<div class="seat-card' + dead + speaking + '" data-seat="' + s.seat + '">' +
+    const me = (MODE === 'play' && s.seat === HUMAN) ? ' me' : '';
+    return '<div class="seat-card' + dead + me + speaking + '" data-seat="' + s.seat + '">' +
       '<div class="seat-ava" data-profile="' + s.seat + '">' + avatarSVG(s.avatar, 34) +
         '<span class="seat-no"' + (reveal ? ' style="color:' + meta.color + '"' : '') + '>' + s.seat + '</span></div>' +
       '<div class="seat-main">' +
         '<div class="seat-name">' + esc(s.name) + '</div>' +
         '<div class="seat-role" style="color:' + roleColor + '">' + roleText +
-          '<span class="seat-model">· ' + esc(specTiny(s.spec)) + '</span></div>' +
+          '<span class="seat-model">· ' + esc(seatModelShort(s)) + '</span></div>' +
       '</div>' +
       '<div class="seat-state ' + (s.alive ? 'alive' : 'out') + '">' + (s.alive ? '在场' : '出局') + '</div>' +
     '</div>';
@@ -1814,10 +2544,11 @@ function renderSeats() {
 
   if (roster) {
     roster.innerHTML = S.seats.map(s => {
-      const cls = 'roster-item' + (s.alive ? '' : ' dead') + (S.speaking === s.seat ? ' speaking' : '');
+      const cls = 'roster-item' + (s.alive ? '' : ' dead') + (S.speaking === s.seat ? ' speaking' : '') +
+        ((MODE === 'play' && s.seat === HUMAN) ? ' me' : '');
       return '<div class="' + cls + '" data-profile="' + s.seat + '">' +
         avatarSVG(s.avatar, 38) + '<b>' + esc(s.name) + '</b>' +
-        '<i>' + esc(specTiny(s.spec)) + '</i></div>';
+        '<i>' + esc(seatModelShort(s)) + '</i></div>';
     }).join('');
     roster.querySelectorAll('[data-profile]').forEach(el => {
       el.addEventListener('click', () => openProfile(Number(el.dataset.profile)));
@@ -1832,10 +2563,10 @@ function openProfile(seat) {
   const s = seatOf(seat);
   if (!s || !S) return;
   const meta = ROLE_META[s.role];
-  const reveal = S.revealed;
+  const reveal = S.revealed || isMe(s);
 
   const tags = ['<span class="tagline">' + s.seat + ' 号</span>'];
-  tags.push('<span class="tagline model">' + esc(specLabel(s.spec)) + '</span>');
+  tags.push('<span class="tagline model">' + esc(seatModel(s)) + '</span>');
   const bits = [];
   if (s.gender) bits.push(s.gender === 'male' ? '男' : s.gender === 'female' ? '女' : '不指定');
   if (s.age) bits.push(s.age + ' 岁');
@@ -1853,19 +2584,29 @@ function openProfile(seat) {
     const t = seatOf(v.to);
     return t && isWolfRole(t.role);
   }).length;
+  const hideTruth = secretsHidden();
   const verdict = !validVotes ? '还没投过票'
     : hit / validVotes >= 0.6 ? '嗅觉很准'
     : hit / validVotes >= 0.34 ? '判断一般'
     : '毒奶体质';
 
-  const whisperHtml = (s.whispers || []).slice(-6).reverse().map(w =>
-    '<div class="quote"><span class="q-round">第 ' + w.round + ' 天</span>' + esc(w.text) + '</div>'
-  ).join('') || '<div class="empty-note">还没有留下心声</div>';
+  const whisperHtml = hideTruth
+    ? '<div class="empty-note">还在桌上，看不到别人的私密记录</div>'
+    : (s.whispers || []).slice(-6).reverse().map(w =>
+        '<div class="quote"><span class="q-round">第 ' + w.round + ' 天</span>' + esc(w.text) + '</div>'
+      ).join('') || '<div class="empty-note">还没有留下心声</div>';
 
   const voteHtml = votes.slice().reverse().slice(0, 8).map(v =>
     '<div class="quote"><span class="q-round">第 ' + v.round + ' 天</span>' +
     (v.to == null ? '弃票' : '投 ' + esc(nameOf(v.to))) + '</div>'
   ).join('') || '<div class="empty-note">还没有投票记录</div>';
+
+  const speechHtml = (S.log || [])
+    .filter(l => (l.kind === 'speech' || l.kind === 'lastword') && l.seat === s.seat)
+    .slice(-8).reverse().map(l =>
+      '<div class="quote"><span class="q-round">第 ' + l.round + ' 天' +
+      (l.kind === 'lastword' ? ' · 遗言' : '') + '</span>' + esc(l.text) + '</div>'
+    ).join('') || '<div class="empty-note">还没发过言</div>';
 
   $('profileTitle').textContent = s.name;
   $('profileBody').innerHTML =
@@ -1879,8 +2620,10 @@ function openProfile(seat) {
     '<div class="profile-sec"><h4>人设</h4><div class="profile-p">' +
       esc(s.persona || '没有填写人设') + '</div></div>' +
     (s.style ? '<div class="profile-sec"><h4>口吻</h4><div class="profile-p">' + esc(s.style) + '</div></div>' : '') +
+    '<div class="profile-sec"><h4>发言回放</h4>' + speechHtml + '</div>' +
     '<div class="profile-sec"><h4>内心独白</h4>' + whisperHtml + '</div>' +
-    '<div class="profile-sec"><h4>投票轨迹 · 命中 ' + hit + '/' + validVotes + ' · ' + verdict + '</h4>' +
+    '<div class="profile-sec"><h4>投票轨迹' +
+      (hideTruth ? '' : ' · 命中 ' + hit + '/' + validVotes + ' · ' + verdict) + '</h4>' +
       voteHtml + '</div>';
 
   $('profileModal').classList.add('show');
@@ -1930,18 +2673,20 @@ function msgError(text) {
   addNode('msg err', esc(text));
 }
 
-function msgSpeech(p) {
-  const wolf = isWolfRole(p.role) ? ' wolf' : '';
+function msgSpeech(p, tag) {
+  // 未揭晓前不给狼人上红边，免得从配色上看穿底牌
+  const wolf = (S && S.revealed && isWolfRole(p.role)) ? ' wolf' : '';
   const node = addNode('msg speech' + wolf,
     '<div class="s-head">' +
       '<span class="s-seat">' + p.seat + '</span>' +
       '<span class="s-name">' + esc(p.name) + '</span>' +
-      '<span class="s-tag">发言</span>' +
+      '<span class="s-tag">' + (tag || '发言') + '</span>' +
     '</div>' +
     '<div class="whisper" style="display:none"></div>' +
     '<div class="s-body"><span class="typing"><i></i><i></i><i></i></span></div>'
   );
-  node.style.borderLeftColor = hexA(ROLE_META[p.role].color, 0.5);
+  const av = normalizeAvatar(p.avatar);
+  node.style.borderLeftColor = hexA(av.accent, 0.55);
 
   const bodyEl = node.querySelector('.s-body');
   const whisperEl = node.querySelector('.whisper');
@@ -1949,7 +2694,7 @@ function msgSpeech(p) {
   return {
     set(text, whisper) {
       bodyEl.textContent = text;
-      if (whisper && CFG.showWhisper) {
+      if (whisper && CFG.showWhisper && !secretsHidden()) {
         whisperEl.textContent = whisper;
         whisperEl.style.display = '';
       } else {
@@ -2072,6 +2817,27 @@ const SFX = (() => {
     },
     vote() { tone({ f: 1400, f2: 900, dur: 0.055, gain: 0.018, type: 'square' }); },
     speak() { tone({ f: 700, dur: 0.04, gain: 0.012, type: 'sine' }); },
+    tick() { tone({ f: 980, dur: 0.045, gain: 0.016, type: 'triangle' }); },
+    turn() {
+      tone({ f: 784, dur: 0.16, gain: 0.038, type: 'triangle' });
+      tone({ f: 1175, dur: 0.34, gain: 0.03, type: 'triangle', delay: 0.1 });
+    },
+    coin() {
+      tone({ f: 1320, dur: 0.09, gain: 0.022, type: 'square' });
+      tone({ f: 1760, dur: 0.13, gain: 0.016, type: 'square', delay: 0.06 });
+    },
+    gavel() {
+      tone({ f: 180, f2: 90, dur: 0.22, gain: 0.05, type: 'sine' });
+      noise(0.18, 0.045);
+    },
+    reveal() {
+      [523, 659, 784, 1046].forEach((f, i) =>
+        tone({ f, dur: 0.6, gain: 0.028, type: 'sine', delay: i * 0.07 }));
+    },
+    warn() {
+      tone({ f: 320, f2: 240, dur: 0.5, gain: 0.045, type: 'sawtooth' });
+      tone({ f: 240, f2: 180, dur: 0.5, gain: 0.035, type: 'sawtooth', delay: 0.28 });
+    },
     win() {
       [392, 494, 587, 784].forEach((f, i) =>
         tone({ f, dur: 0.85, gain: 0.04, type: 'triangle', delay: i * 0.11 }));
@@ -2218,29 +2984,34 @@ function collectSeats() {
    ============================================================ */
 function initGame(seats, specs) {
   const roles = shuffle(BOARDS[seats.length].slice());
+  const ME_AVATAR = { shape: 'circle', bg: '#3a2f22', fg: '#f8eedd', accent: '#a8843c', glyph: '你' };
   S = {
-    seats: seats.map((s, i) => ({
-      seat: s.seat,
-      name: s.name,
-      persona: s.persona || '',
-      style: s.style || '',
-      avatar: s.avatar || null,
-      gender: s.gender || '',
-      age: s.age || 0,
-      mbti: s.mbti || '',
-      spec: (specs && specs[i]) || null,
-      role: roles[i],
-      alive: true,
-      mem: [],            // 该玩家自述记忆
-      whispers: [],       // 心声存档，档案卡里回看
-      voteLog: [],        // 自己投过谁
-      seerLog: [],
-      saveUsed: false,
-      poisonUsed: false,
-      guardLast: null,
-      outRound: 0,
-      outReason: ''
-    })),
+    seats: seats.map((s, i) => {
+      const mine = MODE === 'play' && s.seat === HUMAN;
+      return {
+        seat: s.seat,
+        name: mine ? HUMAN_NAME : s.name,
+        persona: mine ? '本人亲自上场，说话随意，靠观察和记性判断。' : (s.persona || ''),
+        style: mine ? '' : (s.style || ''),
+        avatar: mine ? normalizeAvatar(ME_AVATAR, HUMAN_NAME, i) : (s.avatar || null),
+        gender: mine ? '' : (s.gender || ''),
+        age: mine ? 0 : (s.age || 0),
+        mbti: mine ? '' : (s.mbti || ''),
+        spec: mine ? null : ((specs && specs[i]) || null),
+        human: mine,
+        role: roles[i],
+        alive: true,
+        mem: [],            // 该玩家自述记忆
+        whispers: [],       // 心声存档，档案卡里回看
+        voteLog: [],        // 自己投过谁
+        seerLog: [],
+        saveUsed: false,
+        poisonUsed: false,
+        guardLast: null,
+        outRound: 0,
+        outReason: ''
+      };
+    }),
     round: 1,
     phase: 'setup',
     winMode: seats.length === 6 ? 'parity' : 'edge',
@@ -2272,7 +3043,7 @@ function initGame(seats, specs) {
    开局前：让每家模型给自己起名、写人设、画头像
    ============================================================ */
 async function genIdentities(id) {
-  const list = S.seats.slice();
+  const list = S.seats.filter(s => !s.human);
   let done = 0;
   setProgress(0.02);
   setStatus('各家模型正在挑名字、写人设…', true);
@@ -2295,7 +3066,7 @@ async function genIdentities(id) {
     addNode('msg seatdrop',
       avatarSVG(s.avatar, 30) +
       '<div class="sd-txt"><b>' + s.seat + ' 号 ' + esc(s.name) + '</b><br>' +
-      '<i>' + esc(specLabel(s.spec)) + (s.age ? ' · ' + s.age + ' 岁' : '') +
+      '<i>' + esc(seatModel(s)) + (s.age ? ' · ' + s.age + ' 岁' : '') +
       (s.mbti ? ' · ' + esc(s.mbti) : '') + '</i></div>');
     scrollFeed(true);
   });
@@ -2333,49 +3104,83 @@ async function nightPhase(id) {
   if (!wolvesAlive.length || !goodsAlive.length) return;
 
   /* ---- 狼人定刀 ---- */
-  const candSeats = goodsAlive.map(s => s.seat);
-  const candText = goodsAlive.map(s => s.seat + ' 号 ' + s.name).join('、');
+  /* 参与模式：休闲第一夜放过真人；硬核把真人排在候选第一位暗示优先处理 */
+  let killPool = goodsAlive.slice();
+  if (MODE === 'play') {
+    if (DIFF === 'casual' && S.round <= 1) {
+      const without = killPool.filter(s => s.seat !== HUMAN);
+      if (without.length >= 3) killPool = without;
+    } else if (DIFF === 'hard') {
+      killPool.sort((a, b) => (a.seat === HUMAN ? -1 : b.seat === HUMAN ? 1 : 0));
+    }
+  }
+  const candSeats = killPool.map(s => s.seat);
+  const candText = killPool.map(s => s.seat + ' 号 ' + s.name).join('、');
   let killSeat = null;
 
   if (wolvesAlive.length === 1) {
     const w = wolvesAlive[0];
-    setStatus(w.name + ' 正在选择目标…', true);
+    nightStatus(w.name + ' 正在选择目标…', true);
     S.speaking = w.seat; renderSeats();
-    const ans = await callLLM({
-      system: sysPrompt(w),
-      user: '【狼人行动】\n今晚由你独自出手。\n可刀的对象：' + candText +
-            '\n\n只回复一个座位号数字，不要解释。',
-      runId: id,
-      maxTokens: 64,
-      spec: w.spec
-    });
-    killSeat = parseSeat(ans, candSeats) ?? pick(candSeats);
+    let chosen = null;
+    if (isMe(w)) {
+      chosen = await askHumanSafe(id, 'pick', {
+        title: '你今晚要刀谁', tip: '狼队只剩你了，你说了算', cands: killPool
+      });
+    } else {
+      const ans = await callLLM({
+        system: sysPrompt(w),
+        user: '【狼人行动】\n今晚由你独自出手。\n可刀的对象：' + candText +
+              '\n\n只回复一个座位号数字，不要解释。',
+        runId: id,
+        maxTokens: 64,
+        spec: w.spec
+      });
+      chosen = parseSeat(ans, candSeats);
+    }
+    killSeat = chosen ?? pick(candSeats);
     godMsg('狼人 ' + w.name + ' 单独决定刀 ' + nameOf(killSeat), '🐺');
     S.speaking = null; renderSeats();
   } else {
-    setStatus('狼人在确认今晚的目标', true);
+    nightStatus('狼人在确认今晚的目标', true);
     const lines = [];
     for (const w of wolvesAlive) {
       await gate(id);
       S.speaking = w.seat; renderSeats();
       const mates = wolvesAlive.filter(x => x.seat !== w.seat)
         .map(x => x.seat + ' 号 ' + x.name).join('、');
-      const ans = await callLLM({
-        system: sysPrompt(w),
-        user: '【狼人夜聊】\n你的狼队友：' + mates +
-              '\n可刀的对象：' + candText +
-              '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
-        runId: id,
-        maxTokens: 220,
-        spec: w.spec
-      });
+      let ans;
+      if (isMe(w)) {
+        ans = await askHumanSafe(id, 'chat', {
+          title: '跟队友说一句', tip: '队友：' + mates
+        });
+        if (!ans) ans = '（没吭声）';
+      } else {
+        ans = await callLLM({
+          system: sysPrompt(w),
+          user: '【狼人夜聊】\n你的狼队友：' + mates +
+                '\n可刀的对象：' + candText +
+                '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
+          runId: id,
+          maxTokens: 220,
+          spec: w.spec
+        });
+      }
       lines.push(w.name + '（' + w.seat + ' 号）：' + ans);
       godMsg('夜聊 · ' + w.name + '：' + ans, '🐺');
+      packMsg('夜聊 · ' + w.name + '：' + ans, '🐺');
       await beat(Math.max(80, paceMs() / 3));
     }
     S.speaking = null; renderSeats();
 
-    const picked = await pool(wolvesAlive, CFG.conc, async w => {
+    let myKill = null;
+    if (wolvesAlive.some(isMe)) {
+      myKill = await askHumanSafe(id, 'pick', {
+        title: '狼队定刀', tip: '夜聊记录在下方', cands: killPool
+      });
+    }
+
+    const picked = await pool(wolvesAlive.filter(w => !isMe(w)), CFG.conc, async w => {
       await gate(id);
       const ans = await callLLM({
         system: sysPrompt(w),
@@ -2388,13 +3193,16 @@ async function nightPhase(id) {
       });
       return parseSeat(ans, candSeats);
     });
+    if (wolvesAlive.some(isMe)) picked.push(myKill);
 
     const tally = new Map();
     picked.filter(v => v != null).forEach(v => tally.set(v, (tally.get(v) || 0) + 1));
     const top = topSeat(tally);
     killSeat = top ? top.seat : pick(candSeats);
-    const detail = picked.map((v, i) => wolvesAlive[i].name + '→' + (v == null ? '空' : nameOf(v))).join('，');
-    godMsg('狼队定刀：' + nameOf(killSeat) + '（' + detail + '）', '🔪');
+    const pairs = wolvesAlive.filter(w => !isMe(w)).map((w, i) => w.name + '→' + (picked[i] == null ? '空' : nameOf(picked[i])));
+    if (wolvesAlive.some(isMe)) pairs.push(HUMAN_NAME + '→' + (myKill == null ? '空' : nameOf(myKill)));
+    godMsg('狼队定刀：' + nameOf(killSeat) + '（' + pairs.join('，') + '）', '🔪');
+    packMsg('狼队定刀：' + nameOf(killSeat) + '（' + pairs.join('，') + '）', '🔪');
   }
 
   S.killSeat = killSeat;
@@ -2409,17 +3217,22 @@ async function nightPhase(id) {
     const checked = new Set(seer.seerLog.map(r => r.seat));
     const cands = aliveSeats().filter(s => s.seat !== seer.seat && !checked.has(s.seat));
     if (cands.length) {
-      setStatus('预言家正在翻一张没人看过的牌', true);
+      nightStatus('预言家正在翻一张没人看过的牌', true);
       S.speaking = seer.seat; renderSeats();
-      const ans = await callLLM({
-        system: sysPrompt(seer),
-        user: '【预言家验人】\n可验的对象：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
-              '\n\n只回复一个座位号数字。',
-        runId: id,
-        maxTokens: 64,
-        spec: seer.spec
-      });
-      let target = parseSeat(ans, cands.map(s => s.seat));
+      let target = null;
+      if (isMe(seer)) {
+        target = await askHumanSafe(id, 'pick', { title: '你要验谁', tip: '结果只有你自己知道', cands });
+      } else {
+        const ans = await callLLM({
+          system: sysPrompt(seer),
+          user: '【预言家验人】\n可验的对象：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
+                '\n\n只回复一个座位号数字。',
+          runId: id,
+          maxTokens: 64,
+          spec: seer.spec
+        });
+        target = parseSeat(ans, cands.map(s => s.seat));
+      }
       if (target == null) target = pick(cands).seat;
       const t = seatOf(target);
       const isWolf = isWolfRole(t.role);
@@ -2427,6 +3240,11 @@ async function nightPhase(id) {
       seerResult = { seat: t.seat, name: t.name, isWolf };
       godMsg('预言家 ' + seer.name + ' 查验 ' + t.seat + ' 号 ' + t.name + '，结果 ' +
              (isWolf ? '狼人' : '好人'), '🔮');
+      if (isMe(seer)) {
+        msgEvent('🔮', '你验了 ' + t.seat + ' 号 ' + t.name + '：' + (isWolf ? '狼人' : '好人'),
+          isWolf ? 'hot' : 'good');
+        SFX.reveal();
+      }
       S.speaking = null; renderSeats();
     }
   }
@@ -2439,19 +3257,26 @@ async function nightPhase(id) {
     await gate(id);
     const cands = aliveSeats().filter(s => s.seat !== guard.guardLast);
     if (cands.length) {
-      setStatus('守卫在挑今晚要护的人', true);
+      nightStatus('守卫在挑今晚要护的人', true);
       S.speaking = guard.seat; renderSeats();
-      const ans = await callLLM({
-        system: sysPrompt(guard),
-        user: '【守卫行动】\n今晚可以守护的对象：' +
-              cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
-              (guard.guardLast ? '\n上一夜你守的是 ' + guard.guardLast + ' 号，今晚不能重复。' : '') +
-              '\n\n只回复一个座位号数字。',
-        runId: id,
-        maxTokens: 64,
-        spec: guard.spec
-      });
-      let t = parseSeat(ans, cands.map(s => s.seat));
+      let t = null;
+      if (isMe(guard)) {
+        t = await askHumanSafe(id, 'pick', {
+          title: '今晚守谁', tip: guard.guardLast ? '上一夜守的是 ' + guard.guardLast + ' 号，今晚不能重复' : '不能连着守同一个人', cands
+        });
+      } else {
+        const ans = await callLLM({
+          system: sysPrompt(guard),
+          user: '【守卫行动】\n今晚可以守护的对象：' +
+                cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
+                (guard.guardLast ? '\n上一夜你守的是 ' + guard.guardLast + ' 号，今晚不能重复。' : '') +
+                '\n\n只回复一个座位号数字。',
+          runId: id,
+          maxTokens: 64,
+          spec: guard.spec
+        });
+        t = parseSeat(ans, cands.map(s => s.seat));
+      }
       if (t == null) t = pick(cands).seat;
       guardSeat = t;
       guard.guardLast = t;
@@ -2467,39 +3292,60 @@ async function nightPhase(id) {
   const witch = aliveSeats().find(s => s.role === 'WITCH');
   if (witch) {
     await gate(id);
-    setStatus('女巫在权衡手里的药', true);
+    nightStatus('女巫在权衡手里的药', true);
     S.speaking = witch.seat; renderSeats();
     const victim = seatOf(killSeat);
-    const ans = await callLLM({
-      system: sysPrompt(witch),
-      user: [
-        '【女巫行动】',
-        '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。',
-        '解药：' + (witch.saveUsed ? '已用完' : '未使用') + '；毒药：' + (witch.poisonUsed ? '已用完' : '未使用') + '。',
-        '同一夜只能用一瓶药。',
-        '可毒对象：' + aliveSeats().filter(s => s.seat !== witch.seat)
-          .map(s => s.seat + ' 号 ' + s.name).join('、'),
-        '',
-        '回复格式只能是下面三种之一：',
-        '救',
-        '毒 座位号',
-        '过'
-      ].join('\n'),
-      runId: id,
-      maxTokens: 64,
-      spec: witch.spec
-    });
-    const raw = ans.replace(/[\s。．.]/g, '');
-    const noSave = /不救|不用解药|保留|不解/.test(raw);
-    const poisonCands = aliveSeats().filter(s => s.seat !== witch.seat).map(s => s.seat);
+    const poisonList = aliveSeats().filter(s => s.seat !== witch.seat);
+    let note = '';
 
-    if (/毒/.test(raw) && !witch.poisonUsed) {
-      const ps = parseSeat(raw, poisonCands);
-      if (ps != null) { witch.poisonUsed = true; poisonSeat = ps; }
-    } else if (/救/.test(raw) && !noSave && !witch.saveUsed) {
-      witch.saveUsed = true; saved = true;
+    if (isMe(witch)) {
+      const r = await askHumanSafe(id, 'witch', {
+        title: '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 被狼人袭击',
+        tip: '解药' + (witch.saveUsed ? '已用完' : '还在') + ' · 毒药' + (witch.poisonUsed ? '已用完' : '还在'),
+        cands: poisonList,
+        victimSeat: killSeat,
+        saveUsed: witch.saveUsed,
+        poisonUsed: witch.poisonUsed
+      });
+      if (r && r.save && !witch.saveUsed) { witch.saveUsed = true; saved = true; }
+      if (r && r.poison != null && !witch.poisonUsed) {
+        const ps = parseSeat(String(r.poison), poisonList.map(s => s.seat));
+        if (ps != null) { witch.poisonUsed = true; poisonSeat = ps; }
+      }
+      note = saved ? '用解药' : poisonSeat != null ? '毒 ' + nameOf(poisonSeat) : '不用药';
+    } else {
+      const ans = await callLLM({
+        system: sysPrompt(witch),
+        user: [
+          '【女巫行动】',
+          '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。',
+          '解药：' + (witch.saveUsed ? '已用完' : '未使用') + '；毒药：' + (witch.poisonUsed ? '已用完' : '未使用') + '。',
+          '同一夜只能用一瓶药。',
+          '可毒对象：' + poisonList.map(s => s.seat + ' 号 ' + s.name).join('、'),
+          '',
+          '回复格式只能是下面三种之一：',
+          '救',
+          '毒 座位号',
+          '过'
+        ].join('\n'),
+        runId: id,
+        maxTokens: 64,
+        spec: witch.spec
+      });
+      const raw = ans.replace(/[\s。．.]/g, '');
+      const noSave = /不救|不用解药|保留|不解/.test(raw);
+      const poisonCands = poisonList.map(s => s.seat);
+
+      if (/毒/.test(raw) && !witch.poisonUsed) {
+        const ps = parseSeat(raw, poisonCands);
+        if (ps != null) { witch.poisonUsed = true; poisonSeat = ps; }
+      } else if (/救/.test(raw) && !noSave && !witch.saveUsed) {
+        witch.saveUsed = true; saved = true;
+      }
+      note = clip(ans, 24);
     }
-    godMsg('女巫 ' + witch.name + ' 的决策：' + clip(ans, 24) +
+
+    godMsg('女巫 ' + witch.name + ' 的决策：' + note +
            (saved ? '（用解药）' : poisonSeat ? '（毒 ' + nameOf(poisonSeat) + '）' : '（不用药）'), '🧪');
     S.speaking = null; renderSeats();
   }
@@ -2533,12 +3379,21 @@ async function nightPhase(id) {
       S.history.push(line);
       msgEvent('💀', line, 'hot');
       deathBeat();
+      if (p.human) { lockView(false); setTimeout(() => SFX.warn(), 800); }
       if (S.lastDeathSeat == null || p.seat < S.lastDeathSeat) S.lastDeathSeat = p.seat;
     }
   }
   renderSeats();
   updateAlive();
   setProgress(0.88);
+
+  /* ---- 遗言（被毒杀的不留遗言） ---- */
+  for (const d of deaths) {
+    if (d.reason === 'poison') continue;
+    const p = seatOf(d.seat);
+    if (!p || p.alive) continue;
+    await lastWords(p, id, '夜里被狼人袭击');
+  }
 
   /* ---- 猎人 / 狼王 夜间开枪 ---- */
   for (const d of deaths) {
@@ -2569,22 +3424,31 @@ async function shoot(p, reason, id) {
 
   let target = null;
   try {
-    const ans = await callLLM({
-      system: sysPrompt(p),
-      user: [
-        '【' + (isKing ? '狼王' : '猎人') + '技能】',
-        '你' + reason + '出局，可以带走一名存活玩家。',
-        '候选：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、'),
-        '',
-        '只回复一个座位号数字。如果选择不开枪，回复 0。'
-      ].join('\n'),
-      runId: id,
-      maxTokens: 64,
-      spec: p.spec
-    });
-    const raw = ans.replace(/\s/g, '');
-    if (!/^0$/.test(raw) && !/不开枪|放弃/.test(raw)) {
-      target = parseSeat(ans, cands.map(s => s.seat));
+    if (isMe(p)) {
+      target = await askHumanSafe(id, 'pick', {
+        title: '你要带走谁',
+        tip: '不开口也能不开枪',
+        cands,
+        passLabel: '不开枪'
+      });
+    } else {
+      const ans = await callLLM({
+        system: sysPrompt(p),
+        user: [
+          '【' + (isKing ? '狼王' : '猎人') + '技能】',
+          '你' + reason + '出局，可以带走一名存活玩家。',
+          '候选：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、'),
+          '',
+          '只回复一个座位号数字。如果选择不开枪，回复 0。'
+        ].join('\n'),
+        runId: id,
+        maxTokens: 64,
+        spec: p.spec
+      });
+      const raw = ans.replace(/\s/g, '');
+      if (!/^0$/.test(raw) && !/不开枪|放弃/.test(raw)) {
+        target = parseSeat(ans, cands.map(s => s.seat));
+      }
     }
   } catch (e) {
     if (e instanceof StopGame) throw e;
@@ -2641,7 +3505,9 @@ async function dayPhase(id) {
   for (let i = 0; i < total; i++) {
     await gate(id);
     const p = order[i];
-    setStatus(p.name + '（' + p.seat + ' 号）正在组织发言…', true);
+    setStatus(isMe(p)
+      ? ('轮到你发言 · 第 ' + (i + 1) + '/' + total + ' 位')
+      : (p.name + '（' + p.seat + ' 号）正在组织发言… · ' + (i + 1) + '/' + total), true);
     S.speaking = p.seat; renderSeats();
     setProgress((i + 0.2) / total * 0.82);
 
@@ -2659,14 +3525,23 @@ async function dayPhase(id) {
     parts.push('【发言】你在牌桌上的正式发言，结合公开信息给出判断与怀疑对象');
 
     try {
-      const raw = await callLLM({
-        system: sysPrompt(p, { whisper: true }),
-        user: parts.join('\n\n'),
-        runId: id,
-        maxTokens: CFG.speechLen === 'long' ? 1200 : CFG.speechLen === 'short' ? 460 : 780,
-        spec: p.spec
-      });
-      const parts2 = splitSpeak(raw);
+      let parts2;
+      if (isMe(p)) {
+        const txt = await askHumanSafe(id, 'say', {
+          title: '轮到你发言',
+          tip: '第 ' + S.round + ' 天 · ' + (i + 1) + '/' + total + ' 位 · 你 ' + p.seat + ' 号'
+        });
+        parts2 = txt ? { body: txt, whisper: '' } : { body: '（想了一下，这轮没说话）', whisper: '' };
+      } else {
+        const raw = await callLLM({
+          system: sysPrompt(p, { whisper: true }),
+          user: parts.join('\n\n'),
+          runId: id,
+          maxTokens: CFG.speechLen === 'long' ? 1200 : CFG.speechLen === 'short' ? 460 : 780,
+          spec: p.spec
+        });
+        parts2 = splitSpeak(raw);
+      }
       card.set(parts2.body, parts2.whisper);
       p.mem.push('第 ' + S.round + ' 天我说：' + clip(parts2.body.replace(/\s+/g, ' '), 90));
       p.lastWhisper = parts2.whisper;
@@ -2702,22 +3577,30 @@ async function dayPhase(id) {
       await gate(id);
       const p = seatOf(seatNum);
       if (!p || !p.alive) continue;
-      setStatus(p.name + ' 正在做 PK 辩护…', true);
+      setStatus(isMe(p) ? '轮到你 PK 辩护' : (p.name + ' 正在做 PK 辩护…'), true);
       S.speaking = p.seat; renderSeats();
       const body = msgSpeech(p);
       try {
-        const text = await callLLM({
-          system: sysPrompt(p, { whisper: true }),
-          user: publicState() +
-                '\n\n你和 ' + pkSeats.filter(x => x !== seatNum).map(nameOf).join('、') +
-                ' 票数相同，进入 PK。\n只有一轮机会，说 2 句为自己辩护，并指出对手的问题。',
-          runId: id,
-          maxTokens: 460,
-          spec: p.spec
-        });
-        const sp = splitSpeak(text);
-        body.set(sp.body, sp.whisper);
-        if (sp.whisper) p.whispers.push({ round: S.round, text: sp.whisper });
+        if (isMe(p)) {
+          const txt = await askHumanSafe(id, 'say', {
+            title: '你和 ' + pkSeats.filter(x => x !== seatNum).map(nameOf).join('、') + ' 平票了',
+            tip: '一轮机会，说两句给自己辩护'
+          });
+          body.set(txt || '（沉默，没有辩护）');
+        } else {
+          const text = await callLLM({
+            system: sysPrompt(p, { whisper: true }),
+            user: publicState() +
+                  '\n\n你和 ' + pkSeats.filter(x => x !== seatNum).map(nameOf).join('、') +
+                  ' 票数相同，进入 PK。\n只有一轮机会，说 2 句为自己辩护，并指出对手的问题。',
+            runId: id,
+            maxTokens: 460,
+            spec: p.spec
+          });
+          const sp = splitSpeak(text);
+          body.set(sp.body, sp.whisper);
+          if (sp.whisper) p.whispers.push({ round: S.round, text: sp.whisper });
+        }
       } catch (e) {
         if (e instanceof StopGame) throw e;
         body.set('（未完成辩护）');
@@ -2747,9 +3630,11 @@ async function dayPhase(id) {
       S.log.push({ round: S.round, kind: 'out', seat: p.seat, name: p.name, text: '放逐' });
       S.lastDeathSeat = p.seat;
       deathBeat();
+      if (p.human) { lockView(false); setTimeout(() => SFX.warn(), 800); }
       renderSeats();
       updateAlive();
       await beat();
+      await lastWords(p, id, '被投票放逐');
 
       if (p.role === 'HUNTER' || p.role === 'WOLF_KING') {
         await gate(id);
@@ -2784,7 +3669,24 @@ async function runVote(id, restrict) {
     ? aliveSeats().filter(s => restrict.includes(s.seat))
     : aliveSeats();
 
-  const picks = await pool(voters, CFG.conc, async p => {
+  // 轮到我投票时先停下来等我
+  let myPick = null;
+  const me = voters.find(isMe);
+  if (me) {
+    const myAllowed = cands.filter(s => s.seat !== me.seat);
+    if (myAllowed.length) {
+      myPick = await askHumanSafe(id, 'pick', {
+        title: restrict && restrict.length ? 'PK 再投一次' : '第 ' + S.round + ' 天投票',
+        tip: '选一个人放逐，也可以弃票',
+        cands: myAllowed,
+        passLabel: '弃票'
+      });
+    }
+  }
+
+  if (me) setStatus('你已投票，等其余 ' + (voters.length - 1) + ' 人表态…', true);
+
+  const picks = await pool(voters.filter(p => !isMe(p)), CFG.conc, async p => {
     await gate(id);
     const allowed = cands.filter(s => s.seat !== p.seat).map(s => s.seat);
     if (!allowed.length) return null;
@@ -2813,14 +3715,18 @@ async function runVote(id, restrict) {
     }
   });
 
+  if (me) picks.push({ from: me.seat, to: myPick });
+
+
   picks.forEach(v => {
+    if (!v) return;
     const p = seatOf(v.from);
     if (p) {
       p.mem.push('第 ' + S.round + ' 天我投给：' + (v.to == null ? '弃票' : nameOf(v.to)));
       p.voteLog.push({ round: S.round, to: v.to });
     }
   });
-  return picks;
+  return picks.filter(Boolean);
 }
 
 async function resolveVote(picks, id, isPK) {
@@ -2869,7 +3775,7 @@ function renderVoteBox(picks, tally) {
     }).join('<br>') + '</div>';
 
   addNode('msg votebox', html);
-  SFX.vote();
+  SFX.gavel();
   scrollFeed(true);
 }
 
@@ -2921,6 +3827,11 @@ async function startGame() {
     if (new Set(names).size !== names.length) { toast('玩家名字不能重复'); return; }
   }
 
+  if (MODE === 'play') {
+    const sel = $('humanSeat');
+    HUMAN = sel ? Math.max(1, Math.min(n, Number(sel.value) || 1)) : 1;
+  }
+
   const id = ++RUN;
   PAUSED = false;
   $('pauseBtn').disabled = false;
@@ -2933,17 +3844,30 @@ async function startGame() {
   $('exportBtn').disabled = true;
 
   initGame(collectSeats(), specs);
+  NOTES = {};
+  lockView(MODE === 'play');
   hideHero();
   SFX.speak();
   // 开局后收起接口配置，把版面让给场上信息
-  const firstGrp = document.querySelector('.panel.right details');
-  if (firstGrp) firstGrp.open = false;
+  const grps = document.querySelectorAll('.panel.right details');
+  if (MODE === 'play') {
+    // 参与模式保留「玩法」面板，随时能翻自己的底牌
+    if (grps[1]) grps[1].open = false;
+    toast('你坐 ' + HUMAN + ' 号位 · ' + diffOf().label + '难度，右侧「看我的底牌」随时可查');
+  } else if (grps[0]) {
+    grps[0].open = false;
+  }
 
   try {
     msgSys('对局开始，' + n + ' 名玩家 · ' + usablePool().length + ' 家模型混战');
     if (CFG.autoIdentity) {
       msgEvent('🪞', '各自开始给自己起名、写人设、画头像。', 'good');
       await genIdentities(id);
+    }
+    /* 参与模式：先把底牌摊给玩家看 */
+    if (MODE === 'play') {
+      const me = seatOf(HUMAN);
+      if (me) await showDealCard(me);
     }
     msgEvent('🎴', '身份已发放，各自收到底牌，牌桌上的灯亮了。');
     await beat(300);
@@ -3023,7 +3947,7 @@ function finishGame() {
   setStatus('对局结束，可查看复盘或导出日志', false);
 
   const wolves = S.seats.filter(s => isWolfRole(s.role))
-    .map(s => s.name + '（' + specLabel(s.spec) + '）').join('、');
+    .map(s => s.name + '（' + seatModel(s) + '）').join('、');
   msgSys('狼人阵容：' + wolves);
 
   /* 战绩：猜得最准 / 最毒奶 */
@@ -3050,6 +3974,7 @@ function finishGame() {
    ============================================================ */
 function openReveal() {
   if (!S) return;
+  SFX.reveal();
   const body = $('modalBody');
   const items = S.seats.map(s => {
     const meta = ROLE_META[s.role];
@@ -3238,6 +4163,8 @@ function stopGame() {
   $('pauseBtn').textContent = '暂停';
   $('pauseBtn').classList.remove('on');
   if (S) { S.speaking = null; }
+  cancelAsk();
+  closeDeal();
   clearCurtain();
   renderSeats();
   renderBetPanel();
@@ -3248,6 +4175,8 @@ function resetUI() {
   RUN++;
   PAUSED = false;
   S = null;
+  NOTES = {};
+  lockView(false);
   feedEl().innerHTML = '';
   showHero();
   $('seatList').innerHTML = '<div class="hint" style="padding:8px 4px">尚未开局，座位待分配。</div>';
@@ -3265,6 +4194,7 @@ function resetUI() {
   $('exportBtn').disabled = true;
   $('stage').className = 'stage';
   document.body.classList.remove('is-day');
+  cancelAsk();
   clearCurtain();
   setProgress(0);
   BET.chips = 100;
@@ -3277,6 +4207,10 @@ function resetUI() {
 }
 
 function toggleView() {
+  if (MODE === 'play' && humanAlive()) {
+    toast('你还坐在牌桌上，视角锁着呢；出局之后才能看全图');
+    return;
+  }
   const b = $('viewBtn');
   const playerView = !document.body.classList.contains('player-view');
   document.body.classList.toggle('player-view', playerView);
@@ -3317,6 +4251,7 @@ $('clearCacheBtn').addEventListener('click', () => {
 });
 $('boardSel').addEventListener('change', () => {
   renderSeatEditor(null);
+  renderModeUI();
   if (!S) renderSeats();
 });
 $('modalClose').addEventListener('click', () => $('modal').classList.remove('show'));
@@ -3328,6 +4263,32 @@ $('modal').addEventListener('click', e => {
 $('profileClose').addEventListener('click', () => $('profileModal').classList.remove('show'));
 $('profileModal').addEventListener('click', e => {
   if (e.target === $('profileModal')) $('profileModal').classList.remove('show');
+});
+
+/* 记牌板 */
+$('noteBtn').addEventListener('click', openNotes);
+$('noteClose').addEventListener('click', () => $('noteModal').classList.remove('show'));
+$('noteModal').addEventListener('click', e => {
+  if (e.target === $('noteModal')) $('noteModal').classList.remove('show');
+});
+$('noteBody').addEventListener('click', e => {
+  const b = e.target.closest('.note-star');
+  if (!b) return;
+  const seat = Number(b.dataset.seat);
+  const score = Number(b.dataset.score);
+  const n = NOTES[seat] || { score: 0, text: '' };
+  n.score = n.score === score ? 0 : score;
+  NOTES[seat] = n;
+  SFX.tick();
+  renderNotes();
+});
+$('noteBody').addEventListener('input', e => {
+  const inp = e.target.closest('.note-input');
+  if (!inp) return;
+  const seat = Number(inp.dataset.seat);
+  const n = NOTES[seat] || { score: 0, text: '' };
+  n.text = inp.value;
+  NOTES[seat] = n;
 });
 
 /* 模型池增删与测试 */
@@ -3348,6 +4309,29 @@ $('betToggle').addEventListener('click', () => {
   else { renderBetPanel(); panel.classList.add('show'); }
 });
 
+/* 玩法切换 */
+$('modeSwitch').addEventListener('click', e => {
+  const b = e.target.closest('.mode-btn');
+  if (!b) return;
+  setMode(b.dataset.mode);
+  SFX.tick();
+});
+$('humanSeat').addEventListener('change', () => {
+  HUMAN = Number($('humanSeat').value) || 1;
+  saveCfg();
+  if (S) renderSeats();
+});
+$('diffSwitch').addEventListener('click', e => {
+  const b = e.target.closest('.mode-btn');
+  if (!b) return;
+  setDiff(b.dataset.diff);
+  SFX.tick();
+});
+$('myCardBtn').addEventListener('click', () => {
+  if (!S) { toast('还没开局，牌还没发'); return; }
+  openProfile(HUMAN);
+});
+
 document.addEventListener('keydown', e => {
   const tag = (e.target && e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return;
@@ -3358,6 +4342,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     $('modal').classList.remove('show');
     $('profileModal').classList.remove('show');
+    $('noteModal').classList.remove('show');
   }
   if (e.key === 'f' || e.key === 'F') toggleFast();
 });
