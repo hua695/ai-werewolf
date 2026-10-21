@@ -455,6 +455,13 @@ body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
 .msg.speech .s-tag{
   margin-left:auto;font-size:10px;color:var(--text-3);letter-spacing:.18em;opacity:.7;
 }
+.like-btn{
+  background:none;border:none;font-size:13px;cursor:pointer;padding:2px 5px;border-radius:4px;
+  opacity:.4;transition:.2s;flex-shrink:0;
+}
+.like-btn:hover{opacity:1;transform:scale(1.2)}
+.like-btn.liked{opacity:1;animation:likePop .4s ease}
+@keyframes likePop{0%{transform:scale(1)}50%{transform:scale(1.5)}100%{transform:scale(1)}}
 .msg.speech .s-body{
   color:#d3d9e5;font-size:14.2px;line-height:1.86;white-space:pre-wrap;word-break:break-word;
   letter-spacing:.01em;
@@ -2865,6 +2872,7 @@ function openProfile(seat) {
       '<div>' +
         '<div class="profile-name">' + esc(s.name) + '</div>' +
         '<div class="profile-meta">' + tags.join('') + '</div>' +
+        '<button class="btn ghost profile-jump" data-jump="' + s.seat + '" style="margin-top:8px;padding:4px 12px;font-size:11px">📍 定位最新发言</button>' +
       '</div>' +
     '</div>' +
     '<div class="profile-sec"><h4>人设</h4><div class="profile-p">' +
@@ -2931,10 +2939,12 @@ function msgSpeech(p, tag) {
       '<span class="s-seat">' + p.seat + '</span>' +
       '<span class="s-name">' + esc(p.name) + '</span>' +
       '<span class="s-tag">' + (tag || '发言') + '</span>' +
+      '<button class="like-btn" data-like="' + p.seat + '" title="精彩发言">👏</button>' +
     '</div>' +
     '<div class="whisper" style="display:none"></div>' +
     '<div class="s-body"><span class="typing"><i></i><i></i><i></i></span></div>'
   );
+  node.dataset.seat = p.seat;
   const av = normalizeAvatar(p.avatar);
   node.style.borderLeftColor = hexA(av.accent, 0.55);
 
@@ -3069,6 +3079,10 @@ const SFX = (() => {
       noise(0.34, 0.05);
     },
     vote() { tone({ f: 1400, f2: 900, dur: 0.055, gain: 0.018, type: 'square' }); },
+    heartbeat() {
+      tone({ f: 60, f2: 45, dur: 0.18, gain: 0.09, type: 'sine' });
+      tone({ f: 55, f2: 40, dur: 0.14, gain: 0.07, type: 'sine', delay: 0.22 });
+    },
     speak() { tone({ f: 700, dur: 0.04, gain: 0.012, type: 'sine' }); },
     tick() { tone({ f: 980, dur: 0.045, gain: 0.016, type: 'triangle' }); },
     turn() {
@@ -3224,6 +3238,17 @@ function deathBeat(kind) {
     app.classList.remove('shake');
     stage.classList.remove('flash');
   }, 850);
+}
+
+/* 紧张时刻心跳效果 */
+function heartbeat(duration) {
+  if (REDUCED) return;
+  const stage = $('stage');
+  if (!stage) return;
+  stage.classList.add('heartbeat');
+  SFX.heartbeat();
+  setTimeout(() => SFX.heartbeat(), 280);
+  setTimeout(() => stage.classList.remove('heartbeat'), duration || 2400);
 }
 
 function hideHero() {
@@ -3749,6 +3774,7 @@ async function shoot(p, reason, id) {
 
   setStatus(p.name + ' 正在决定是否开枪…', true);
   S.speaking = p.seat; renderSeats();
+  heartbeat(2500);
 
   let target = null;
   try {
@@ -3900,6 +3926,7 @@ async function dayPhase(id) {
   if (result.tie && result.tie.length > 1) {
     await gate(id);
     msgEvent('⚖️', '出现平票，进入 PK 环节。', 'hot');
+    heartbeat(3000);
     const pkSeats = result.tie.slice();
     for (const seatNum of pkSeats) {
       await gate(id);
@@ -4599,6 +4626,31 @@ $('modal').addEventListener('click', e => {
 $('profileClose').addEventListener('click', () => $('profileModal').classList.remove('show'));
 $('profileModal').addEventListener('click', e => {
   if (e.target === $('profileModal')) $('profileModal').classList.remove('show');
+  const jump = e.target.closest('[data-jump]');
+  if (jump) {
+    const seat = Number(jump.dataset.jump);
+    const nodes = feedEl().querySelectorAll('.msg.speech[data-seat="' + seat + '"]');
+    if (nodes.length) {
+      $('profileModal').classList.remove('show');
+      const last = nodes[nodes.length - 1];
+      last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      last.style.boxShadow = '0 0 0 2px rgba(217,169,75,.7),0 0 30px rgba(217,169,75,.3)';
+      setTimeout(() => { last.style.boxShadow = ''; }, 2000);
+    }
+  }
+});
+
+/* 发言点赞（事件委托） */
+feedEl().addEventListener('click', e => {
+  const btn = e.target.closest('.like-btn');
+  if (!btn) return;
+  btn.classList.toggle('liked');
+  if (btn.classList.contains('liked')) {
+    btn.textContent = '👏';
+    SFX.tick();
+  } else {
+    btn.textContent = '👏';
+  }
 });
 
 /* 记牌板 */
