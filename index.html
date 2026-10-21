@@ -496,7 +496,13 @@ body.player-view .msg.speech{border-left-color:var(--line)!important}
 body.player-view .msg.speech.wolf .s-name{color:inherit}
 
 /* ══════════ 开场 ══════════ */
-.hero{padding:54px 18px 34px;text-align:center;animation:fadeUp .8s var(--ease) both}
+.hero{padding:54px 18px 34px;text-align:center;animation:fadeUp .8s var(--ease) both;position:relative;isolation:isolate}
+/* 标题压在被照亮的位置上，垫一层柔光保证读得清 */
+.hero::before{
+  content:'';position:absolute;left:50%;top:0;transform:translateX(-50%);
+  width:min(580px,124%);height:250px;z-index:-1;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 46%,rgba(6,9,14,.8),rgba(6,9,14,.52) 54%,transparent 78%);
+}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .hero-mark{
   width:80px;height:80px;margin:0 auto 26px;border-radius:50%;display:grid;place-items:center;
@@ -516,6 +522,7 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 .hero p{
   color:#a4aec1;font-size:13px;margin-top:16px;letter-spacing:.05em;line-height:2;
   text-shadow:0 1px 14px rgba(6,9,14,.92);
+  text-wrap:balance;
 }
 .hero-chips{display:flex;gap:8px;justify-content:center;margin-top:26px;flex-wrap:wrap}
 .hero-chip{
@@ -1087,7 +1094,7 @@ body.player-view .whisper{display:none!important}
       <div class="feed-inner" id="feedInner">
         <div class="hero" id="hero">
           <h1>AI 狼人杀</h1>
-          <p>DeepSeek、豆包、Kimi、GLM、Qwen 坐在同一张桌上。<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>
+          <p>DeepSeek、豆包、Kimi、GLM、Qwen 同坐一桌，<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>
           <div class="hero-chips">
             <span class="hero-chip">多家模型混战</span>
             <span class="hero-chip">AI 自造人设</span>
@@ -3155,7 +3162,7 @@ function showHero() {
   wrap.id = 'hero';
   wrap.innerHTML =
     '<h1>AI 狼人杀</h1>' +
-    '<p>DeepSeek、豆包、Kimi、GLM、Qwen 坐在同一张桌上。<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>' +
+    '<p>DeepSeek、豆包、Kimi、GLM、Qwen 同坐一桌，<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>' +
     '<div class="hero-chips">' +
       '<span class="hero-chip">多家模型混战</span>' +
       '<span class="hero-chip">AI 自造人设</span>' +
