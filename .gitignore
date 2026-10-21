@@ -6,3 +6,6 @@ AI狼人杀-原版备份.html
 # 系统垃圾
 Thumbs.db
 .DS_Store
+
+# 本地评测稿，不部署
+玩家视角优化建议.md

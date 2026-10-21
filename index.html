@@ -211,6 +211,148 @@ body.is-day .brand-mark{
 }
 @keyframes flashOut{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
 
+/* ══════════ 场景底图 ══════════ */
+.stage-bg{
+  position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;
+  background-image:url(assets/bg-night.jpg);
+  background-size:cover;background-position:center 24%;
+  opacity:.95;filter:saturate(1.02) contrast(1.01) brightness(1.1);
+  transition:opacity .8s var(--ease),filter .8s var(--ease),background-image .8s;
+}
+.stage-bg::after{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(120% 66% at 50% 4%,rgba(8,11,17,.1),rgba(8,11,17,.42) 62%,rgba(6,9,14,.72)),
+    linear-gradient(180deg,rgba(6,9,14,.03),rgba(6,9,14,.5) 78%);
+}
+body.is-day .stage-bg{
+  background-image:url(assets/bg-day.jpg);
+  background-position:center 34%;
+  opacity:.72;filter:saturate(.85) brightness(1.12);
+}
+body.is-day .stage-bg::after{
+  background:
+    radial-gradient(120% 66% at 50% 4%,rgba(10,13,18,.24),rgba(9,12,17,.54) 62%,rgba(6,9,14,.8)),
+    linear-gradient(180deg,rgba(8,11,16,.2),rgba(6,9,14,.7) 78%);
+}
+.stage.idle .stage-bg{opacity:1}
+.stage.idle .stage-bg::after{background:linear-gradient(180deg,rgba(6,9,14,.66),rgba(6,9,14,.6) 46%,rgba(6,9,14,.92))}
+/* 底图上叠一层细噪点，压住塑料感 */
+.stage-bg .grain{
+  position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E");
+}
+
+/* ══════════ 特效层 ══════════ */
+.fx{position:absolute;inset:0;z-index:17;pointer-events:none;overflow:hidden}
+
+/* 被刀：四道爪痕 + 血红暗角 */
+.fx .claw{position:absolute;inset:-15%;transform:rotate(9deg)}
+.fx .claw i{
+  position:absolute;top:-12%;width:4.4%;height:128%;
+  background:linear-gradient(180deg,
+    transparent 6%,rgba(255,240,232,.9) 20%,rgba(226,62,44,.82) 52%,rgba(120,16,10,.5) 78%,transparent 96%);
+  border-radius:50%;transform-origin:top center;transform:rotate(20deg) scaleY(.05);opacity:0;
+  filter:blur(.7px) drop-shadow(0 0 12px rgba(214,54,36,.85));
+  animation:clawCut .66s cubic-bezier(.16,.86,.2,1) forwards;
+}
+.fx .claw i:nth-child(1){left:11%}
+.fx .claw i:nth-child(2){left:27%;height:136%}
+.fx .claw i:nth-child(3){left:43%;height:122%}
+.fx .claw i:nth-child(4){left:59%;height:132%}
+.fx .claw i:nth-child(5){left:74%;height:118%}
+@keyframes clawCut{
+  0%{opacity:0;transform:rotate(20deg) scaleY(.05)}
+  14%{opacity:1}
+  52%{opacity:.96;transform:rotate(20deg) scaleY(1)}
+  100%{opacity:0;transform:rotate(20deg) scaleY(1.05)}
+}
+.fx .blood{position:absolute;inset:0;box-shadow:inset 0 0 150px rgba(196,34,22,.72);animation:fadeOut 1s ease-out forwards}
+@keyframes fadeOut{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
+
+/* 被毒：绿雾上涌 + 骷髅 */
+.fx .poison{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(circle at 50% 96%,rgba(104,232,158,.42),rgba(58,150,110,.2) 38%,transparent 66%),
+    radial-gradient(circle at 50% 50%,transparent 44%,rgba(46,150,104,.22) 100%);
+  animation:poisonPulse 1.9s ease-out forwards;
+}
+@keyframes poisonPulse{0%{opacity:0}20%{opacity:1}70%{opacity:.9}100%{opacity:0}}
+.fx .bubble{
+  position:absolute;bottom:5%;width:18px;height:18px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,rgba(216,255,232,.98),rgba(74,196,134,.55) 58%,transparent 72%);
+  box-shadow:0 0 12px rgba(110,232,164,.55);
+  animation:bubbleUp 1.8s ease-in forwards;
+}
+@keyframes bubbleUp{
+  0%{opacity:0;transform:translateY(0) scale(.4)}
+  28%{opacity:.9}
+  100%{opacity:0;transform:translateY(-460px) scale(1.5)}
+}
+.fx .skull{
+  position:absolute;left:50%;top:46%;font-size:62px;opacity:0;
+  transform:translate(-50%,-50%);
+  filter:drop-shadow(0 0 24px rgba(92,222,152,.75));
+  animation:skullIn 2s ease-out forwards;
+}
+@keyframes skullIn{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.55)}
+  22%{opacity:.96}
+  72%{opacity:.9}
+  100%{opacity:0;transform:translate(-50%,-62%) scale(1.14)}
+}
+
+/* 预言家验人：金色/血色光环 */
+.fx .seer{
+  position:absolute;left:50%;top:46%;width:min(56vmin,420px);aspect-ratio:1;border-radius:50%;
+  border:2px solid rgba(217,169,75,.85);
+  box-shadow:0 0 64px rgba(217,169,75,.55),inset 0 0 64px rgba(217,169,75,.3);
+  transform:translate(-50%,-50%) scale(.2);opacity:0;
+  animation:seerRing 1.35s cubic-bezier(.16,.82,.2,1) forwards;
+}
+.fx .seer::after{
+  content:'';position:absolute;inset:14%;border-radius:50%;
+  border:1px solid rgba(217,169,75,.45);
+}
+.fx .seer.wolf{
+  border-color:rgba(214,72,54,.95);
+  box-shadow:0 0 82px rgba(214,72,54,.68),inset 0 0 82px rgba(214,72,54,.38);
+}
+.fx .seer.wolf::after{border-color:rgba(214,72,54,.5)}
+.fx .seer.slow{animation-duration:1.9s}
+@keyframes seerRing{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.18)}
+  24%{opacity:1}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1.7)}
+}
+.fx .seer-eye{
+  position:absolute;left:50%;top:46%;font-size:72px;opacity:0;
+  transform:translate(-50%,-50%) scale(.55);
+  animation:seerEye 1.55s ease-out forwards;
+}
+.fx .seer-eye.wolf{filter:drop-shadow(0 0 26px rgba(224,72,48,.85))}
+.fx .seer-eye.good{filter:drop-shadow(0 0 26px rgba(217,169,75,.8))}
+@keyframes seerEye{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.5)}
+  20%{opacity:1}
+  62%{opacity:.92}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(1.12)}
+}
+/* 被验中的座位卡闪一下 */
+.seat-card.seerhit{animation:seerHit 1.4s ease-out}
+.seat-card.seerhit.wolfhit{animation:seerHitWolf 1.4s ease-out}
+@keyframes seerHit{
+  0%{box-shadow:none}
+  18%{box-shadow:0 0 0 2px rgba(217,169,75,.9),0 0 24px rgba(217,169,75,.5)}
+  100%{box-shadow:none}
+}
+@keyframes seerHitWolf{
+  0%{box-shadow:none}
+  18%{box-shadow:0 0 0 2px rgba(216,64,44,.95),0 0 26px rgba(216,64,44,.55)}
+  100%{box-shadow:none}
+}
+
 .feed{
   flex:1;overflow-y:auto;padding:26px 28px 16px;position:relative;z-index:1;
 }
@@ -354,7 +496,7 @@ body.player-view .msg.speech{border-left-color:var(--line)!important}
 body.player-view .msg.speech.wolf .s-name{color:inherit}
 
 /* ══════════ 开场 ══════════ */
-.hero{padding:64px 18px 34px;text-align:center;animation:fadeUp .8s var(--ease) both}
+.hero{padding:54px 18px 34px;text-align:center;animation:fadeUp .8s var(--ease) both}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .hero-mark{
   width:80px;height:80px;margin:0 auto 26px;border-radius:50%;display:grid;place-items:center;
@@ -368,18 +510,27 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 50%{box-shadow:0 0 80px rgba(90,130,200,.24),inset 0 0 36px rgba(125,167,224,.1)}}
 .hero h1{
   font-family:var(--serif);font-size:34px;font-weight:600;letter-spacing:.16em;text-indent:.16em;
-  color:#dde3ee;
+  color:#e6ebf5;
+  text-shadow:0 2px 22px rgba(6,9,14,.92),0 0 54px rgba(6,9,14,.8);
 }
 .hero p{
-  color:var(--text-3);font-size:13px;margin-top:16px;letter-spacing:.05em;line-height:2;
+  color:#a4aec1;font-size:13px;margin-top:16px;letter-spacing:.05em;line-height:2;
+  text-shadow:0 1px 14px rgba(6,9,14,.92);
 }
 .hero-chips{display:flex;gap:8px;justify-content:center;margin-top:26px;flex-wrap:wrap}
 .hero-chip{
-  font-size:11px;color:var(--text-3);border:1px solid var(--line);
+  font-size:11px;color:#9aa4bd;border:1px solid rgba(255,255,255,.1);
   border-radius:99px;padding:4px 12px;letter-spacing:.04em;
+  background:rgba(10,13,19,.35);backdrop-filter:blur(2px);
 }
-.hero-arrow{margin-top:40px;font-size:11.5px;color:#565f73;letter-spacing:.1em}
-.hero-arrow span{display:inline-block;animation:nudge 2.4s ease-in-out infinite}
+.hero-arrow{
+  margin-top:40px;font-size:12px;color:#c3cbdb;letter-spacing:.1em;
+  text-shadow:0 1px 12px rgba(6,9,14,.9);
+}
+.hero-arrow span{
+  display:inline-block;color:var(--gold);font-size:14px;
+  animation:nudge 2.4s ease-in-out infinite;
+}
 @keyframes nudge{0%,100%{transform:translateX(0);opacity:.5}50%{transform:translateX(5px);opacity:1}}
 
 /* ══════════ 幕布 ══════════ */
@@ -798,6 +949,14 @@ body.player-view .whisper{display:none!important}
   .note-star{font-size:17px;padding:0 2px}
   .note-input{flex:1 0 100%}
   .ask-timer{font-size:10.5px}
+  /* 顶栏在窄屏别再挤成一团 */
+  .topbar{gap:8px;padding:0 10px}
+  #roundText{display:none}
+  .stageinfo{gap:6px}
+  .stageinfo .pill{padding:3px 9px;font-size:11px}
+  .topactions{gap:5px}
+  .icon-btn{padding:6px 8px;font-size:11.5px}
+  #soundBtn{width:26px}
 }
 
 /* 我自己的座位 */
@@ -870,7 +1029,9 @@ body.player-view .whisper{display:none!important}
 }
 @media (max-width:430px){
   .brand-name{display:none}
-  .stageinfo .pill{padding:3px 9px;font-size:11px}
+  .stageinfo .pill{padding:2px 8px;font-size:10.5px;gap:5px}
+  #noteBtn{font-size:0;padding:6px 9px}
+  #noteBtn::before{content:'📝';font-size:12px}
   .hero-chips{gap:6px}
   .hero-chip{font-size:10.5px;padding:3px 9px}
 }
@@ -917,13 +1078,14 @@ body.player-view .whisper{display:none!important}
   </aside>
 
   <main class="stage" id="stage">
+    <div class="stage-bg" id="stageBg"><span class="grain"></span></div>
     <div class="curtain" id="curtain"><span class="curtain-text" id="curtainText"></span></div>
     <div class="kill-slash" id="killSlash"></div>
+    <div class="fx" id="fx"></div>
     <div class="roster" id="roster"></div>
     <div class="feed" id="feed">
       <div class="feed-inner" id="feedInner">
         <div class="hero" id="hero">
-          <div class="hero-mark">🐺</div>
           <h1>AI 狼人杀</h1>
           <p>DeepSeek、豆包、Kimi、GLM、Qwen 坐在同一张桌上。<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>
           <div class="hero-chips">
@@ -932,7 +1094,7 @@ body.player-view .whisper{display:none!important}
             <span class="hero-chip">心声与押注</span>
             <span class="hero-chip">平票 PK</span>
           </div>
-          <div class="hero-arrow">右侧填好密钥，点开始，剩下的交给它们 <span>→</span></div>
+          <div class="hero-arrow">先把密钥填进「配置」，点开始，剩下的交给它们 <span>→</span></div>
         </div>
       </div>
     </div>
@@ -2838,6 +3000,16 @@ const SFX = (() => {
       tone({ f: 320, f2: 240, dur: 0.5, gain: 0.045, type: 'sawtooth' });
       tone({ f: 240, f2: 180, dur: 0.5, gain: 0.035, type: 'sawtooth', delay: 0.28 });
     },
+    bite() {
+      tone({ f: 420, f2: 90, dur: 0.32, gain: 0.085, type: 'sawtooth' });
+      noise(0.28, 0.07);
+      noise(0.16, 0.05);
+    },
+    poison() {
+      tone({ f: 620, f2: 180, dur: 0.9, gain: 0.05, type: 'sine' });
+      tone({ f: 940, f2: 320, dur: 0.7, gain: 0.026, type: 'triangle', delay: 0.12 });
+      tone({ f: 160, f2: 96, dur: 1.1, gain: 0.045, type: 'sine', delay: 0.35 });
+    },
     win() {
       [392, 494, 587, 784].forEach((f, i) =>
         tone({ f, dur: 0.85, gain: 0.04, type: 'triangle', delay: i * 0.11 }));
@@ -2879,26 +3051,84 @@ function clearCurtain() {
   if (c) c.classList.remove('show');
 }
 
-function deathBeat() {
+/* ============================================================
+   画面特效：被刀 / 被毒 / 验人
+   ============================================================ */
+function fxRun(html, ms) {
+  const f = $('fx');
+  if (!f) return;
+  f.innerHTML = html;
+  clearTimeout(fxRun._t);
+  fxRun._t = setTimeout(() => { if (f) f.innerHTML = ''; }, ms);
+}
+
+function fxClaw() {
+  if (REDUCED) return;
+  fxRun('<div class="claw"><i></i><i></i><i></i><i></i><i></i></div><div class="blood"></div>', 980);
+  SFX.bite();
+}
+
+function fxPoison() {
+  if (REDUCED) return;
+  let bubbles = '';
+  for (let i = 0; i < 10; i++) {
+    const size = 10 + Math.random() * 18;
+    bubbles += '<span class="bubble" style="left:' + (8 + Math.random() * 84).toFixed(1) + '%;' +
+      'width:' + size.toFixed(0) + 'px;height:' + size.toFixed(0) + 'px;' +
+      'animation-delay:' + (Math.random() * 0.55).toFixed(2) + 's"></span>';
+  }
+  fxRun('<div class="poison"></div>' + bubbles + '<div class="skull">☠️</div>', 2100);
+  SFX.poison();
+}
+
+function fxSeer(isWolf, seat) {
+  if (REDUCED) return;
+  fxRun(
+    '<div class="seer' + (isWolf ? ' wolf' : '') + '"></div>' +
+    '<div class="seer-eye ' + (isWolf ? 'wolf' : 'good') + '">' + (isWolf ? '🐺' : '🔮') + '</div>',
+    1750
+  );
+  SFX.reveal();
+  if (seat == null) return;
+  setTimeout(() => {
+    const el = document.querySelector('.seat-card[data-seat="' + seat + '"]');
+    if (!el) return;
+    el.classList.remove('seerhit', 'wolfhit');
+    void el.offsetWidth;
+    el.classList.add('seerhit');
+    if (isWolf) el.classList.add('wolfhit');
+    setTimeout(() => el.classList.remove('seerhit', 'wolfhit'), 1500);
+  }, 260);
+}
+
+function deathBeat(kind) {
   SFX.death();
   const app = $('app');
   const stage = $('stage');
   if (REDUCED || !app || !stage) return;
 
-  const slash = $('killSlash');
-  if (slash) {
-    slash.classList.remove('on');
-    void slash.offsetWidth;
-    slash.classList.add('on');
-    setTimeout(() => slash.classList.remove('on'), 700);
+  if (kind === 'wolf') {
+    fxClaw();
+  } else if (kind === 'poison') {
+    fxPoison();
+  } else {
+    const slash = $('killSlash');
+    if (slash) {
+      slash.classList.remove('on');
+      void slash.offsetWidth;
+      slash.classList.add('on');
+      setTimeout(() => slash.classList.remove('on'), 700);
+    }
   }
 
   app.classList.remove('shake');
   void app.offsetWidth;
   app.classList.add('shake');
-  stage.classList.remove('flash');
-  void stage.offsetWidth;
-  stage.classList.add('flash');
+  if (kind !== 'poison') {
+    stage.classList.remove('flash');
+    void stage.offsetWidth;
+    stage.classList.add('flash');
+  }
   setTimeout(() => {
     app.classList.remove('shake');
     stage.classList.remove('flash');
@@ -2907,6 +3137,8 @@ function deathBeat() {
 
 function hideHero() {
   const h = $('hero');
+  const st = $('stage');
+  if (st) st.classList.remove('idle');
   if (!h) return;
   h.style.transition = 'opacity .35s, transform .35s';
   h.style.opacity = '0';
@@ -2916,11 +3148,12 @@ function hideHero() {
 
 function showHero() {
   if ($('hero')) return;
+  const st = $('stage');
+  if (st) st.classList.add('idle');
   const wrap = document.createElement('div');
   wrap.className = 'hero';
   wrap.id = 'hero';
   wrap.innerHTML =
-    '<div class="hero-mark">🐺</div>' +
     '<h1>AI 狼人杀</h1>' +
     '<p>DeepSeek、豆包、Kimi、GLM、Qwen 坐在同一张桌上。<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>' +
     '<div class="hero-chips">' +
@@ -2929,7 +3162,7 @@ function showHero() {
       '<span class="hero-chip">心声与押注</span>' +
       '<span class="hero-chip">平票 PK</span>' +
     '</div>' +
-    '<div class="hero-arrow">右侧填好密钥，点开始，剩下的交给它们 <span>→</span></div>';
+    '<div class="hero-arrow">先把密钥填进「配置」，点开始，剩下的交给它们 <span>→</span></div>';
   feedEl().appendChild(wrap);
 }
 
@@ -3246,6 +3479,10 @@ async function nightPhase(id) {
         SFX.reveal();
       }
       S.speaking = null; renderSeats();
+      /* 只有看得到这条信息的人才播验人特效 */
+      if (isMe(seer) || !(MODE === 'play' && humanAlive())) {
+        setTimeout(() => fxSeer(isWolf, t.seat), 140);
+      }
     }
   }
   setProgress(0.5);
@@ -3378,7 +3615,7 @@ async function nightPhase(id) {
       S.news.push(line);
       S.history.push(line);
       msgEvent('💀', line, 'hot');
-      deathBeat();
+      deathBeat(d.reason === 'wolf' ? 'wolf' : 'poison');
       if (p.human) { lockView(false); setTimeout(() => SFX.warn(), 800); }
       if (S.lastDeathSeat == null || p.seat < S.lastDeathSeat) S.lastDeathSeat = p.seat;
     }
@@ -3470,7 +3707,7 @@ async function shoot(p, reason, id) {
   S.news.push(line);
   S.history.push(line);
   msgEvent('🏹', line, 'hot');
-  deathBeat();
+  deathBeat('vote');
   renderSeats();
   updateAlive();
 
