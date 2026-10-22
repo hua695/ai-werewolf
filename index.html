@@ -1457,7 +1457,7 @@ body.player-view .whisper{display:none!important}
           </div>
           <div class="field">
             <label>并发数</label>
-            <input class="inp" id="conc" type="number" min="1" max="8" step="1" value="3">
+            <input class="inp" id="conc" type="number" min="1" max="8" step="1" value="5">
           </div>
         </div>
         <div class="row2">
@@ -4456,16 +4456,26 @@ async function genIdentities(id) {
   setProgress(0.02);
   setStatus('各家模型正在挑名字、写人设…', true);
 
-  await pool(list, Math.max(1, Math.min(CFG.conc, 4)), async s => {
+  /* 身份生成是准备阶段最耗时的一步，把它放到用户设置的并发上限；
+     另外给每次调用加 15 秒封顶——某个模型慢不该让全桌陪它等。 */
+  await pool(list, Math.max(2, CFG.conc), async s => {
     await gate(id);
     const idx = list.indexOf(s);
-    const info = await genIdentity(s.seat, s.spec, id, null, genders[idx]);
+    const fb = {
+      name: '玩家' + s.seat, gender: genders[idx], age: 0, mbti: '',
+      persona: '普通人，话不多，习惯先听完再开口。',
+      style: '平和，短句，偶尔反问。', avatar: null
+    };
+    const info = await Promise.race([
+      genIdentity(s.seat, s.spec, id, null, genders[idx]),
+      sleep(15000).then(() => null)
+    ]) || fb;
     if (id !== RUN) throw new StopGame();
     s.name = info.name;
     s.persona = info.persona;
     s.style = info.style;
-    s.avatar = dealAvatar(info.gender);
-    s.gender = info.gender;
+    s.avatar = dealAvatar(info.gender || genders[idx]);
+    s.gender = info.gender || genders[idx];
     s.age = info.age;
     s.mbti = info.mbti;
     done++;
