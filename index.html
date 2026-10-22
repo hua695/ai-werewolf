@@ -1246,8 +1246,12 @@ body.player-view .whisper{display:none!important}
           <label class="switch"><input type="checkbox" id="smSfx" checked><span class="slider"></span></label>
         </div>
         <div class="sm-item">
+          <label class="sm-label">背景音乐</label>
+          <label class="switch"><input type="checkbox" id="smBgm" checked><span class="slider"></span></label>
+        </div>
+        <div class="sm-item">
           <label class="sm-label">语音播报</label>
-          <label class="switch"><input type="checkbox" id="smTts"><span class="slider"></span></label>
+          <label class="switch"><input type="checkbox" id="smTts" checked><span class="slider"></span></label>
         </div>
         <div class="sm-item sm-sub" id="smTtsOpts" style="display:none">
           <label class="sm-label">语速</label>
@@ -1443,7 +1447,7 @@ body.player-view .whisper{display:none!important}
       <div class="grp-body">
         <label class="check"><input type="checkbox" id="godLog" checked> 记录夜间行动明细</label>
         <label class="check"><input type="checkbox" id="showWhisper" checked> 显示玩家的内心独白</label>
-        <label class="check"><input type="checkbox" id="ttsEnabled"> 语音播报发言</label>
+        <label class="check"><input type="checkbox" id="ttsEnabled" checked> 语音播报发言</label>
         <div class="row2" style="margin-top:9px">
           <div class="field">
             <label>语音语速</label>
@@ -1794,7 +1798,8 @@ function saveCfg() {
       poolv: POOL_VERSION,
       remember: $('rememberKey').checked,
       sound: (typeof SFX !== 'undefined') ? SFX.enabled : true,
-      tts: (typeof TTS !== 'undefined') ? TTS.enabled : false,
+      bgm: (typeof BGM !== 'undefined') ? BGM.enabled : true,
+      tts: (typeof TTS !== 'undefined') ? TTS.enabled : true,
       ttsRate: (typeof TTS !== 'undefined') ? TTS.rate : 1,
       ttsScope: (typeof TTS !== 'undefined') ? TTS.scope : 'speech',
       pool: POOL.map(p => ({
@@ -1838,9 +1843,14 @@ function loadCfg() {
       const b = $('soundBtn');
       if (b) { b.textContent = '🔇'; b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
     }
-    if (c.tts) {
-      TTS.setEnabled(true);
-      syncTtsUI(true);
+    if (c.tts != null) {
+      TTS.setEnabled(!!c.tts);
+      syncTtsUI(!!c.tts);
+    }
+    if (c.bgm != null) {
+      BGM.setEnabled(!!c.bgm);
+      const smb = $('smBgm');
+      if (smb) smb.checked = !!c.bgm;
     }
     if (c.ttsRate) {
       TTS.setRate(c.ttsRate);
@@ -3582,6 +3592,161 @@ const SFX = (() => {
 })();
 
 /* ============================================================
+   背景音乐：按场景程序化合成的氛围垫，不用任何外部音频文件。
+
+   夜晚是低沉的 drone 加稀疏的远处钟声；白天换成明亮一点的长音垫
+   加慢琶音；投票是低音脉动；终局播一段终止式就停。音量都很低，
+   垫在环境音效和语音播报底下，不抢戏。
+   ============================================================ */
+const BGM = (() => {
+  let ctx = null;
+  let enabled = true;
+  let scene = '';
+  let master = null;
+  let nodes = [];     // 当前场景的持续音源，切场景时停
+  let timers = [];    // 场景内的随机点缀计时器
+  let vol = 1;        // 总闸（菜单里调低了就整体压）
+
+  function ensure() {
+    if (!enabled) return null;
+    try {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC();
+      }
+      if (ctx.state === 'suspended') ctx.resume();
+      return ctx;
+    } catch (e) { return null; }
+  }
+
+  function stopScene(fade) {
+    timers.forEach(clearInterval);
+    timers = [];
+    const oldNodes = nodes;
+    nodes = [];
+    if (master) {
+      const m = master, c = ctx, f = fade || 0.8;
+      try {
+        m.gain.cancelScheduledValues(c.currentTime);
+        m.gain.setValueAtTime(m.gain.value, c.currentTime);
+        m.gain.linearRampToValueAtTime(0.0001, c.currentTime + f);
+      } catch (e) { /* 忽略 */ }
+      setTimeout(() => {
+        oldNodes.forEach(n => { try { n.stop(); } catch (e) { /* 忽略 */ } });
+        try { m.disconnect(); } catch (e) { /* 忽略 */ }
+      }, f * 1000 + 120);
+      master = null;
+    }
+  }
+
+  /* 持续长音：可挂一个慢 LFO 让它「呼吸」 */
+  function drone(freq, type, v, lfoRate, lfoDepth) {
+    const c = ctx;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    g.gain.value = v;
+    if (lfoRate) {
+      const lfo = c.createOscillator();
+      const lg = c.createGain();
+      lfo.frequency.value = lfoRate;
+      lg.gain.value = lfoDepth || v * 0.5;
+      lfo.connect(lg).connect(g.gain);
+      lfo.start();
+      nodes.push(lfo);
+    }
+    osc.connect(g).connect(master);
+    osc.start();
+    nodes.push(osc);
+  }
+
+  /* 一次性点缀音 */
+  function ping(freq, dur, v, type) {
+    const c = ctx;
+    const t0 = c.currentTime;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, v), t0 + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g).connect(master);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  }
+
+  function fadeUp(sec) {
+    master.gain.setValueAtTime(0.0001, ctx.currentTime);
+    master.gain.linearRampToValueAtTime(vol, ctx.currentTime + sec);
+  }
+
+  function sceneNight() {
+    fadeUp(2.2);
+    drone(55, 'triangle', 0.5, 0.07, 0.2);       // A1 底噪
+    drone(82.4, 'sine', 0.2, 0.05, 0.09);        // 五度
+    drone(110, 'sine', 0.09, 0.09, 0.05);
+    timers.push(setInterval(() => {               // 远处的钟，稀稀落落
+      if (Math.random() < 0.4) ping(pick([440, 523.3, 659.3]) , 2.6, 0.028, 'sine');
+    }, 9000));
+  }
+
+  function sceneDay() {
+    fadeUp(1.6);
+    drone(146.8, 'sine', 0.15, 0.08, 0.05);      // D3
+    drone(220, 'sine', 0.09, 0.06, 0.035);       // A3
+    drone(293.7, 'triangle', 0.045, 0.1, 0.018); // D4
+    const seq = [293.7, 370, 440, 370];          // D 大调慢琶音
+    let i = 0;
+    timers.push(setInterval(() => ping(seq[i++ % seq.length], 1.5, 0.03, 'sine'), 2700));
+  }
+
+  function sceneVote() {
+    fadeUp(0.9);
+    drone(110, 'sine', 0.09, 0.35, 0.04);
+    drone(116.5, 'sine', 0.09, 0.35, 0.04);      // 两根微差拍，越听越紧
+    timers.push(setInterval(() => ping(70, 0.16, 0.075, 'sine'), 1150));   // 低音脉动
+  }
+
+  function sceneOver(win) {
+    fadeUp(0.4);
+    const seq = win ? [261.6, 329.6, 392, 523.3] : [220, 196, 174.6, 146.8];
+    seq.forEach((f, i) => setTimeout(() => ping(f, 1.1, 0.05, 'triangle'), i * 270));
+  }
+
+  function setScene(name) {
+    const next = enabled ? (name || '') : '';
+    if (next === scene) return;
+    scene = next;
+    stopScene(0.8);
+    if (!next) return;
+    const c = ensure();
+    if (!c) return;
+    master = c.createGain();
+    master.gain.value = vol;
+    master.connect(c.destination);
+    if (next === 'night') sceneNight();
+    else if (next === 'day') sceneDay();
+    else if (next === 'vote') sceneVote();
+    else if (next === 'over-win') sceneOver(true);
+    else if (next === 'over-lose') sceneOver(false);
+  }
+
+  return {
+    setScene,
+    setEnabled(v) {
+      enabled = !!v;
+      if (!enabled) { scene = ''; stopScene(0.6); }
+    },
+    get enabled() { return enabled; },
+    get scene() { return scene; },
+    setVolume(v) { vol = Math.min(1, Math.max(0, Number(v) || 0)); if (master) master.gain.value = vol; }
+  };
+})();
+
+/* ============================================================
    语音播报（TTS）
 
    两条路：先用浏览器原生合成（不花流量、延迟低），
@@ -3593,7 +3758,7 @@ const TTS = (() => {
   const NATIVE_WAIT = 900;  // 原生合成多久没动静就判失效，转在线
   const BAIDU_SPD = 5;      // 百度语速基准，1 慢 15 快
 
-  let enabled = false;
+  let enabled = true;       // 语音播报默认开，老用户存过关就保持关
   let rate = 1;
   let pitch = 1;
   let scope = 'speech';
@@ -4120,6 +4285,7 @@ async function nightPhase(id) {
   S.killSeat = null;
   renderBetPanel();
   SFX.night();
+  BGM.setScene('night');
   await curtain('天黑请闭眼', 520, () => {
     setStage('night', '第 ' + S.round + ' 夜', '天黑请闭眼');
     msgPhase('第 ' + S.round + ' 夜', '天黑请闭眼', 'night');
@@ -4508,6 +4674,7 @@ async function shoot(p, reason, id) {
 async function dayPhase(id) {
   S.phase = 'day';
   SFX.day();
+  BGM.setScene('day');
   await curtain('天亮了', 420, () => {
     setStage('day', '第 ' + S.round + ' 天', '天亮了');
     msgPhase('第 ' + S.round + ' 天', '天亮了', 'day');
@@ -4734,6 +4901,7 @@ function speechOrder() {
 }
 
 async function runVote(id, restrict) {
+  BGM.setScene('vote');   // 投票是全场最紧的时候，垫一层脉动
   const voters = aliveSeats();
   const cands = restrict && restrict.length
     ? aliveSeats().filter(s => restrict.includes(s.seat))
@@ -5002,6 +5170,7 @@ async function startGame() {
 
 function finishGame() {
   S.revealed = true;
+  BGM.setScene(S.winner === 'good' ? 'over-win' : 'over-lose');
   renderSeats();
   updateAlive();
 
@@ -5237,6 +5406,7 @@ function stopGame() {
   PAUSED = false;
   TTS.stop();
   TYPER.cancelAll();
+  BGM.setScene('');
   $('pauseBtn').disabled = true;
   $('stopBtn').disabled = true;
   if ($('stopBtn2')) $('stopBtn2').disabled = true;
@@ -5258,6 +5428,7 @@ function resetUI() {
   PAUSED = false;
   TTS.stop();
   TYPER.cancelAll();
+  BGM.setScene('');
   S = null;
   NOTES = {};
   lockView(false);
@@ -5333,6 +5504,17 @@ $('smSfx').addEventListener('change', () => {
   if (on) SFX.vote();
 });
 
+/* 声音菜单：背景音乐（关掉再开时，接着当前场景继续垫） */
+$('smBgm').addEventListener('change', () => {
+  const on = $('smBgm').checked;
+  BGM.setEnabled(on);
+  if (on) {
+    BGM.setScene(!S ? '' : S.phase === 'night' ? 'night' : 'day');
+  }
+  syncTtsUI(TTS.enabled);
+  saveCfg();
+});
+
 /* 声音菜单：语音播报 */
 $('smTts').addEventListener('change', () => {
   const on = $('smTts').checked;
@@ -5366,12 +5548,16 @@ function syncTtsUI(on) {
   if (sm) sm.checked = on;
   const cb = $('ttsEnabled');
   if (cb) cb.checked = on;
+  const smb = $('smBgm');
+  if (smb && typeof BGM !== 'undefined') smb.checked = BGM.enabled;
   const b = $('soundBtn');
   const sfxOn = (typeof SFX !== 'undefined') ? SFX.enabled : true;
+  const bgmOn = (typeof BGM !== 'undefined') ? BGM.enabled : true;
+  const anyOn = sfxOn || bgmOn || on;
   if (b) {
-    b.textContent = (sfxOn || on) ? '🔊' : '🔇';
-    b.classList.toggle('on', sfxOn || on);
-    b.setAttribute('aria-pressed', (sfxOn || on) ? 'true' : 'false');
+    b.textContent = anyOn ? '🔊' : '🔇';
+    b.classList.toggle('on', anyOn);
+    b.setAttribute('aria-pressed', anyOn ? 'true' : 'false');
   }
 }
 
