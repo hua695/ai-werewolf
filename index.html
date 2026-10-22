@@ -3384,24 +3384,20 @@ const TTS = (() => {
       return false;
     }
 
-    // 先播一个蜂鸣，确认音量没问题
+    // 先播一个在线音频测试，确认音量和浏览器音频功能正常
     try {
-      const ac = new (window.AudioContext || window.webkitAudioContext)();
-      if (ac.state === 'suspended') ac.resume();
-      const osc = ac.createOscillator();
-      const gain = ac.createGain();
-      osc.frequency.value = 880;
-      gain.gain.value = 0.15;
-      osc.connect(gain).connect(ac.destination);
-      osc.start();
-      osc.stop(ac.currentTime + 0.3);
-      toast('🔔 先听滴一声…如果连滴都听不到，检查手机媒体音量', 4000);
+      const audio = new Audio('https://cdn.freesound.org/previews/415/415347_5126450-lq.mp3');
+      audio.volume = 0.5;
+      audio.play().then(() => {
+        toast('🔔 在线音频播放成功！说明音量正常，是语音合成的问题', 4000);
+      }).catch((e) => {
+        toast('❌ 在线音频也播不了:' + e.message + '，检查手机媒体音量', 5000);
+      });
     } catch (e) {
-      console.warn('beep failed:', e);
-      toast('⚠️ 音频初始化失败:' + e.message, 4000);
+      console.warn('audio test failed:', e);
     }
 
-    // 尝试播放 - 不指定voice，让浏览器自己选
+    // 尝试播放Web Speech API
     try {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance('语音播报测试，你能听到我说话吗？');
@@ -3409,7 +3405,6 @@ const TTS = (() => {
       utter.pitch = 1;
       utter.volume = 1;
       utter.lang = 'zh-CN';
-      // 不指定voice，某些浏览器指定voice反而不发声
       utter.onstart = () => console.log('TTS started');
       utter.onend = () => console.log('TTS ended');
       utter.onerror = (e) => {
