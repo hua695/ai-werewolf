@@ -3387,15 +3387,18 @@ const TTS = (() => {
     // 先播一个蜂鸣，确认音量没问题
     try {
       const ac = new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
       const osc = ac.createOscillator();
       const gain = ac.createGain();
       osc.frequency.value = 880;
-      gain.gain.value = 0.1;
+      gain.gain.value = 0.15;
       osc.connect(gain).connect(ac.destination);
       osc.start();
-      osc.stop(ac.currentTime + 0.2);
+      osc.stop(ac.currentTime + 0.3);
+      toast('🔔 先听滴一声…如果连滴都听不到，检查手机媒体音量', 4000);
     } catch (e) {
       console.warn('beep failed:', e);
+      toast('⚠️ 音频初始化失败:' + e.message, 4000);
     }
 
     // 尝试播放 - 不指定voice，让浏览器自己选
