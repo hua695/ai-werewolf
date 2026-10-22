@@ -3378,27 +3378,39 @@ const TTS = (() => {
   }
 
   function test() {
-    // 先测试百度TTS（更可靠）
+    // 第一步：用国内可访问的音频测试音量
+    const testUrl = 'https://www.baidu.com/img/PCtm_d9c8750bed0b3c7d089fa7d55720d6cf.png';
+    // 用一个简单的国内mp3测试，或者直接用Web Audio生成
+    try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state === 'suspended') ac.resume();
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.frequency.value = 880;
+      gain.gain.value = 0.2;
+      osc.connect(gain).connect(ac.destination);
+      osc.start();
+      osc.stop(ac.currentTime + 0.5);
+      toast('🔔 先听滴一声…如果听不到，检查手机媒体音量', 4000);
+    } catch (e) {
+      toast('❌ 音频初始化失败:' + e.message, 4000);
+    }
+
+    // 第二步：测试百度TTS
     if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     const spd = Math.round(rate * 4);
-    const url = `https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent('语音播报测试，你能听到我说话吗？')}`;
-    const audio = new Audio(url);
+    // 用百度翻译的TTS接口（虽然不是官方API，但很多人在用）
+    const url = `https://fanyi.baidu.com/gettts?lan=zh&text=${encodeURIComponent('语音播报测试，你能听到我说话吗？')}&spd=${spd}&source=web`;
+    console.log('TTS URL:', url);
+    const audio = new Audio();
     audio.volume = 1;
-    audio.onplay = () => toast('🔊 正在用百度TTS播放测试语音…', 3000);
+    audio.oncanplay = () => console.log('TTS can play');
+    audio.onplay = () => toast('🔊 百度TTS正在播放…', 3000);
     audio.onerror = (e) => {
-      console.error('百度TTS失败:', e);
-      // 再试代理
-      const proxyUrl = `/api/proxy?target=${encodeURIComponent(url)}`;
-      const audio2 = new Audio(proxyUrl);
-      audio2.volume = 1;
-      audio2.onplay = () => toast('🔊 通过代理播放…', 3000);
-      audio2.onerror = (e2) => {
-        toast('❌ 直接和代理都失败了，请检查网络', 4000);
-      };
-      audio2.play();
-      currentAudio = audio2;
-      return;
+      console.error('百度TTS失败:', e, audio.error);
+      toast('❌ 百度TTS失败，错误码:' + (audio.error ? audio.error.code : 'unknown'), 4000);
     };
+    audio.src = url;
     audio.play().catch((e) => {
       toast('❌ 播放失败:' + e.message, 4000);
     });
