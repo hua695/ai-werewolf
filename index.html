@@ -4196,6 +4196,50 @@ const TTS = (() => {
     return true;
   }
 
+  /* ── Edge TTS：真人音色，走 /api/tts 边缘代理 ──
+     网页直连微软的朗读 WebSocket 会被 Origin 校验拦掉，所以由 Cloudflare
+     边缘函数代发请求；拿不到音频就自动回落浏览器合成，不影响可用性。 */
+  const EDGE_VOICES = {
+    '沉稳': { voice: 'zh-CN-YunjianNeural', rate: '-8%', pitch: '-4Hz' },
+    '严谨': { voice: 'zh-CN-YunyangNeural', rate: '-5%', pitch: '-2Hz' },
+    '温柔': { voice: 'zh-CN-XiaoxiaoNeural', rate: '-2%', pitch: '0Hz' },
+    '活泼': { voice: 'zh-CN-XiaoyiNeural', rate: '+14%', pitch: '+3Hz' },
+    '犀利': { voice: 'zh-CN-YunxiNeural', rate: '+10%', pitch: '+1Hz' },
+    '腼腆': { voice: 'zh-CN-XiaochenNeural', rate: '-12%', pitch: '+2Hz' },
+    '爽朗': { voice: 'zh-CN-YunjianNeural', rate: '+6%', pitch: '+2Hz' },
+    '软萌': { voice: 'zh-CN-XiaoyiNeural', rate: '+8%', pitch: '+6Hz' },
+    '旁白': { voice: 'zh-CN-YunyangNeural', rate: '-10%', pitch: '-6Hz' }
+  };
+  let edgeOk = null;   // null 未知 / true 可用 / false 本局不再尝试
+
+  function canEdge() {
+    return edgeOk !== false && typeof window.Audio === 'function' && location.protocol !== 'file:';
+  }
+
+  function talkEdge(text, profName, mySeq, fallback) {
+    if (mySeq != null && mySeq !== seq) return false;
+    const m = EDGE_VOICES[profName] || EDGE_VOICES['温柔'];
+    const url = '/api/tts?text=' + encodeURIComponent(text) +
+      '&voice=' + encodeURIComponent(m.voice) +
+      '&rate=' + encodeURIComponent(m.rate) +
+      '&pitch=' + encodeURIComponent(m.pitch);
+    const a = new Audio(url);
+    a.volume = 1;
+    const drop = () => { if (audio === a) audio = null; };
+    a.onended = drop;
+    a.onerror = () => {
+      drop();
+      if (edgeOk !== false) { edgeOk = false; console.warn('Edge TTS 不可用，改用浏览器合成'); }
+      if (fallback) fallback();
+    };
+    audio = a;
+    a.play().then(() => { edgeOk = true; }).catch(() => {
+      if (edgeOk !== false) { edgeOk = false; console.warn('Edge TTS 播放失败，改用浏览器合成'); }
+      if (fallback) fallback();
+    });
+    return true;
+  }
+
   function speak(text, opts) {
     const o = opts || {};
     if (!enabled && !o.force) return false;
@@ -4204,6 +4248,14 @@ const TTS = (() => {
     if (!body) return false;
     const mySeq = ++seq;   // 新的这句顶掉旧的
     silence();
+    const nativeFallback = () => {
+      if (mySeq !== seq) return;
+      if (canNative()) talkNative(body, o, mySeq);
+      else talkOnline(body, o, mySeq);
+    };
+    if ((o.prof || o.altVoice) && canEdge()) {
+      return talkEdge(body, (o.prof && o.prof.name) || '旁白', mySeq, nativeFallback);
+    }
     if (canNative()) return talkNative(body, o, mySeq);
     return talkOnline(body, o, mySeq);
   }
@@ -4264,7 +4316,8 @@ const TTS = (() => {
       return speak((name ? name + '，' : '') + body, {
         rate: rate * (p.rate || 1),
         pitch: p.pitch != null ? p.pitch : 1,
-        voiceIdx: p.voice != null ? p.voice : 0
+        voiceIdx: p.voice != null ? p.voice : 0,
+        prof: p
       });
     },
     /* 旁白：换一个音色、压低一点、稍慢，和角色发言区分开 */
@@ -4276,6 +4329,12 @@ const TTS = (() => {
       const mySeq = ++seq;
       silence();
       const opts = { rate: Math.max(0.8, rate * 0.9), pitch: 0.75, altVoice: true };
+      const nativeFallback = () => {
+        if (mySeq !== seq) return;
+        if (canNative()) talkNative(body, opts, mySeq);
+        else talkOnline(body, opts, mySeq);
+      };
+      if (canEdge()) return talkEdge(body, '旁白', mySeq, nativeFallback);
       if (canNative()) return talkNative(body, opts, mySeq);
       return talkOnline(body, opts, mySeq);
     },
