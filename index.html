@@ -296,12 +296,12 @@ body.is-day .brand-mark{
   transition:opacity 1.4s var(--ease),filter 1.4s var(--ease);
 }
 .stage-bg::before{
-  background-image:url(assets/bg-night.jpg);background-position:center 24%;
+  background-image:url(assets/bg/bg-night.jpg);background-position:center 24%;
   opacity:1;filter:saturate(1.02) contrast(1.01) brightness(1.1);
 }
 .stage-bg::after{
   /* 白天用 bg-day.jpg：这张图本身偏暗，靠提亮滤镜 + 暖白纱罩做成「阳光照进来的暖白」 */
-  background-image:url(assets/bg-day.jpg);
+  background-image:url(assets/bg/bg-day.jpg);
   background-position:center 46%;
   opacity:0;
   filter:brightness(1.42) saturate(.8) contrast(.92) sepia(.12);
@@ -2167,18 +2167,38 @@ const AVATAR_FILES = {
   female: [1, 4, 6, 8, 11].map(n => 'assets/avatars/avatar' + n + '.jpg')
 };
 
-/* 发牌器：同性别内洗牌后依次发，发完再洗一遍，保证同局尽量不撞头像 */
+/* 发牌器：全局不重复。先发同性别的，同性别的用完了借异性（宁可性别不符也不重复），
+   12 张正好够 12 人板用满一轮。 */
 function makeAvatarDealer() {
-  const decks = {
-    male: shuffle(AVATAR_FILES.male.slice()),
-    female: shuffle(AVATAR_FILES.female.slice())
+  const used = new Set();
+  const take = arr => {
+    const free = arr.filter(f => !used.has(f));
+    if (!free.length) return null;
+    const f = pick(free);
+    used.add(f);
+    return f;
   };
-  const idx = { male: 0, female: 0 };
   return gender => {
-    const g = gender === 'female' ? 'female' : 'male';   // 性别不明按男池（池子更大）
-    if (idx[g] >= decks[g].length) { decks[g] = shuffle(AVATAR_FILES[g].slice()); idx[g] = 0; }
-    return { img: decks[g][idx[g]++] };
+    const g = gender === 'female' ? 'female' : 'male';
+    const other = g === 'female' ? 'male' : 'female';
+    const f = take(AVATAR_FILES[g]) || take(AVATAR_FILES[other]) || AVATAR_FILES[g][0];
+    return { img: f };
   };
+}
+
+/* 按人数先排好性别：男女尽量均衡，且不超过各自头像池容量（男 7 女 5）。
+   这样头像既不会重复，玩家的性别和照片也一定对得上。 */
+function planGenders(n) {
+  const maleMax = AVATAR_FILES.male.length;
+  const femaleMax = AVATAR_FILES.female.length;
+  let male = Math.min(maleMax, Math.ceil(n / 2));
+  let female = n - male;
+  if (female > femaleMax) { male += female - femaleMax; female = femaleMax; }
+  if (male > maleMax) { female += male - maleMax; male = maleMax; }
+  const arr = [];
+  for (let i = 0; i < male; i++) arr.push('male');
+  for (let i = 0; i < female; i++) arr.push('female');
+  return shuffle(arr);
 }
 
 let AV_SEQ = 0;
@@ -2243,7 +2263,7 @@ function salvageFields(raw) {
   };
 }
 
-async function genIdentity(seat, spec, id, taken) {
+async function genIdentity(seat, spec, id, taken, forcedGender) {
   const sys = '你在为一场狼人杀牌桌准备一个玩家身份。按你自己的喜好设计，不要解释，不要输出代码块。';
   const user = [
     '为这个玩家设计身份，只输出一个 JSON 对象。',
@@ -2253,7 +2273,7 @@ async function genIdentity(seat, spec, id, taken) {
     '2. persona 写 45 到 80 字，是普通人的职业与性格，能自然带出说话习惯',
     '3. style 一句话，20 字内，写口吻要求',
     '4. mbti 四位大写或空字符串，age 在 20 到 55 之间',
-    '5. gender 只能是 male 或 female 之一，按名字和人设的气质来定',
+    '5. gender 必须是 ' + (forcedGender === 'female' ? 'female' : 'male') + '（这个玩家的性别已经定了，按这个性别起名字、写人设）',
     '',
     '格式：',
     '{"name":"","gender":"male|female","age":30,"mbti":"INTJ","persona":"","style":""}'
@@ -2275,7 +2295,7 @@ async function genIdentity(seat, spec, id, taken) {
 
   return {
     name,
-    gender: (data && data.gender) || '',
+    gender: forcedGender || (data && data.gender) || '',
     age: (data && Number(data.age)) || 28 + (seat % 12),
     mbti: (data && data.mbti) ? String(data.mbti).toUpperCase().slice(0, 4) : '',
     persona: (data && data.persona) ? String(data.persona).slice(0, 120) : '普通人，表达克制，习惯先听完再开口。',
@@ -4430,14 +4450,16 @@ function initGame(seats, specs) {
    ============================================================ */
 async function genIdentities(id) {
   const list = S.seats.filter(s => !s.human);
-  const dealAvatar = makeAvatarDealer();   // 本局头像发牌器，按性别发
+  const dealAvatar = makeAvatarDealer();   // 本局头像发牌器：全局不重复
+  const genders = planGenders(list.length);   // 先定性别，保证和头像池对得上
   let done = 0;
   setProgress(0.02);
   setStatus('各家模型正在挑名字、写人设…', true);
 
   await pool(list, Math.max(1, Math.min(CFG.conc, 4)), async s => {
     await gate(id);
-    const info = await genIdentity(s.seat, s.spec, id, null);
+    const idx = list.indexOf(s);
+    const info = await genIdentity(s.seat, s.spec, id, null, genders[idx]);
     if (id !== RUN) throw new StopGame();
     s.name = info.name;
     s.persona = info.persona;
