@@ -1,4 +1,3 @@
-
 export async function onRequest(context) {
   const { request } = context;
   const corsHeaders = {
@@ -14,19 +13,35 @@ export async function onRequest(context) {
 
   try {
     const url = new URL(request.url);
-    // 路径格式: /api/proxy?target=https://api.example.com/v1/chat/completions
     const target = url.searchParams.get('target');
     if (!target) {
       return new Response('Missing target parameter', { status: 400, headers: corsHeaders });
     }
 
-    let newRequest = new Request(target, request);
-    newRequest.headers.set("Origin", new URL(target).origin);
+    // 构建请求，加必要的header
+    const targetUrl = new URL(target);
+    const headers = new Headers(request.headers);
+    headers.set("Origin", targetUrl.origin);
+    headers.set("Referer", targetUrl.origin + "/");
+    headers.set("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+
+    const newRequest = new Request(target, {
+      method: request.method,
+      headers: headers,
+      body: request.body,
+    });
 
     let response = await fetch(newRequest);
-    response = new Response(response.body, response);
-    Object.entries(corsHeaders).forEach(([k, v]) => response.headers.set(k, v));
-    return response;
+    
+    // 创建新的响应，保留原始内容类型，加上CORS头
+    const responseHeaders = new Headers(response.headers);
+    Object.entries(corsHeaders).forEach(([k, v]) => responseHeaders.set(k, v));
+    
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
   } catch (e) {
     return new Response("Proxy error: " + e.message, { status: 500, headers: corsHeaders });
   }
