@@ -3335,14 +3335,12 @@ const TTS = (() => {
     const o = opts || {};
     // 停止当前播报
     try { window.speechSynthesis.cancel(); } catch (e) {}
-    // 如果语音还没加载好，再试一次
-    if (!zhVoice) pickVoice();
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = o.rate || rate;
     utter.pitch = o.pitch || 1;
     utter.volume = 1;
     utter.lang = 'zh-CN';
-    if (zhVoice) utter.voice = zhVoice;
+    // 不指定voice，某些浏览器（小米浏览器等）指定voice反而不发声
     utter.onerror = (e) => {
       console.warn('TTS error:', e);
     };
@@ -3376,36 +3374,47 @@ const TTS = (() => {
     const zhVoices = voices.filter(v => /zh|cmn|chinese|中文|普通话/i.test(v.lang + v.name));
     if (!voicesReady || !zhVoice) pickVoice();
 
-    // 把诊断信息显示出来
-    const diag = `语音共${voices.length}个，中文${zhVoices.length}个${zhVoice ? '，已选:' + zhVoice.name.slice(0,12) : ''}`;
-    console.log('TTS诊断:', diag);
+    const diag = `语音共${voices.length}个，中文${zhVoices.length}个`;
+    console.log('TTS诊断:', diag, zhVoices.map(v => v.name + '(' + v.lang + ')'));
 
     if (voices.length === 0) {
-      toast('⚠️ 语音列表为空，正在加载…2秒后再点一次测试', 4000);
-      // 强制触发语音加载
-      try { window.speechSynthesis.getVoices(); } catch(e) {}
+      toast('⚠️ 语音列表为空，2秒后再点一次', 4000);
       setTimeout(pickVoice, 1000);
       setTimeout(pickVoice, 2000);
       return false;
     }
 
-    // 尝试播放
+    // 先播一个蜂鸣，确认音量没问题
     try {
+      const ac = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      osc.frequency.value = 880;
+      gain.gain.value = 0.1;
+      osc.connect(gain).connect(ac.destination);
+      osc.start();
+      osc.stop(ac.currentTime + 0.2);
+    } catch (e) {
+      console.warn('beep failed:', e);
+    }
+
+    // 尝试播放 - 不指定voice，让浏览器自己选
+    try {
+      window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance('语音播报测试，你能听到我说话吗？');
       utter.rate = 1;
       utter.pitch = 1;
       utter.volume = 1;
       utter.lang = 'zh-CN';
-      if (zhVoice) utter.voice = zhVoice;
+      // 不指定voice，某些浏览器指定voice反而不发声
       utter.onstart = () => console.log('TTS started');
       utter.onend = () => console.log('TTS ended');
       utter.onerror = (e) => {
         console.error('TTS error:', e);
-        toast('❌ 播放失败:' + (e.error || 'unknown'), 4000);
+        toast('❌ 播放失败:' + (e.error || 'unknown') + '，建议换Chrome浏览器', 5000);
       };
-      window.speechSynthesis.cancel();
       window.speechSynthesis.speak(utter);
-      toast('✅ 正在播放测试语音…' + diag, 3000);
+      toast('🔊 正在播放…' + diag + '（先听到滴一声说明音量正常）', 4000);
       return true;
     } catch (e) {
       toast('❌ 播放异常:' + e.message, 4000);
