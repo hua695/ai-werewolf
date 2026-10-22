@@ -1322,6 +1322,10 @@ body.player-view .whisper{display:none!important}
           <label class="sm-label">语音播报</label>
           <label class="switch"><input type="checkbox" id="smTts" checked><span class="slider"></span></label>
         </div>
+        <div class="sm-item">
+          <label class="sm-label">旁白</label>
+          <label class="switch"><input type="checkbox" id="smNarr" checked><span class="slider"></span></label>
+        </div>
         <div class="sm-item sm-sub" id="smTtsOpts" style="display:none">
           <label class="sm-label">语速</label>
           <select class="sm-sel" id="smRate">
@@ -1528,11 +1532,8 @@ body.player-view .whisper{display:none!important}
             </select>
           </div>
           <div class="field">
-            <label>播报内容</label>
-            <select class="sel" id="ttsScope">
-              <option value="speech" selected>只播报发言</option>
-              <option value="all">发言+系统消息</option>
-            </select>
+            <label>旁白</label>
+            <label class="check" style="margin-top:6px"><input type="checkbox" id="ttsNarr" checked> 念昼夜、出局、平票</label>
           </div>
         </div>
         <div class="hint">夜间明细与心声只在上帝视角出现，不会写进任何玩家的提示词。语音用浏览器内置合成，不需要额外密钥。</div>
@@ -1869,6 +1870,7 @@ function saveCfg() {
       sound: (typeof SFX !== 'undefined') ? SFX.enabled : true,
       bgm: (typeof BGM !== 'undefined') ? BGM.enabled : true,
       tts: (typeof TTS !== 'undefined') ? TTS.enabled : true,
+      narr: (typeof TTS !== 'undefined') ? TTS.narr : true,
       ttsRate: (typeof TTS !== 'undefined') ? TTS.rate : 1,
       ttsScope: (typeof TTS !== 'undefined') ? TTS.scope : 'speech',
       pool: POOL.map(p => ({
@@ -1916,6 +1918,7 @@ function loadCfg() {
       TTS.setEnabled(!!c.tts);
       syncTtsUI(!!c.tts);
     }
+    if (c.narr != null) { TTS.setNarr(!!c.narr); }
     if (c.bgm != null) {
       BGM.setEnabled(!!c.bgm);
       const smb = $('smBgm');
@@ -3496,8 +3499,8 @@ function addNode(cls, html) {
 function msgPhase(title, sub, kind) {
   addNode('msg phase ' + (kind || ''), '<div class="p-main">' + esc(title) + '</div>' +
     (sub ? '<div class="p-sub">' + esc(sub) + '</div>' : ''));
-  // 播报范围选了「发言+系统消息」时，昼夜交替也念一句
-  if (kind) TTS.sys(sub ? title + '，' + sub : title);
+  // 昼夜交替交给旁白念，音色和角色发言分开
+  if (kind) TTS.narrate(sub ? title + '，' + sub : title);
 }
 
 function msgSys(text) {
@@ -3505,6 +3508,8 @@ function msgSys(text) {
 }
 
 function msgEvent(icon, text, cls) {
+  // 出局、开枪、平票、平安夜这些才值得旁白，普通提示不念
+  if (cls && /death|hot|good/.test(cls)) TTS.narrate(text);
   return addNode('msg event ' + (cls || ''), '<span class="e-ico">' + icon + '</span><span>' + esc(text) + '</span>');
 }
 
@@ -3959,6 +3964,7 @@ const TTS = (() => {
   const BAIDU_SPD = 5;      // 百度语速基准，1 慢 15 快
 
   let enabled = true;       // 语音播报默认开，老用户存过关就保持关
+  let narrOn = true;        // 旁白单独开关，默认开
   let rate = 1.3;           // 默认语速偏快一点，原生合成的 1.0 听起来太端着
   let pitch = 1;
   let scope = 'speech';
@@ -3976,22 +3982,23 @@ const TTS = (() => {
   const canOnline = () => typeof window.Audio === 'function' && location.protocol !== 'file:';
 
   /* 找中文音色。Chrome 首次 getVoices() 可能是空数组，等事件再取一次 */
-  function zhVoice() {
-    if (!window.speechSynthesis) return null;
+  /* 中文音色列表：第一个给角色发言，第二个（若有）给旁白，这样旁白和发言是两个人的声音 */
+  function zhVoiceList() {
+    if (!window.speechSynthesis) return [];
     if (voiceCache) return voiceCache;
-    const pickVoice = () => {
+    const pick = () => {
       const vs = window.speechSynthesis.getVoices() || [];
-      return vs.find(v => /^zh([-_]|$)/i.test(v.lang || '')) ||
-             vs.find(v => /(zh|cmn|chinese|中文|普通话)/i.test((v.lang || '') + ' ' + (v.name || ''))) || null;
+      return vs.filter(v => /^zh([-_]|$)/i.test(v.lang || '') ||
+        /(zh|cmn|chinese|中文|普通话)/i.test((v.lang || '') + ' ' + (v.name || '')));
     };
-    voiceCache = pickVoice();
-    if (!voiceCache && !voicesHooked && window.speechSynthesis.addEventListener) {
+    voiceCache = pick();
+    if (!voiceCache.length && !voicesHooked && window.speechSynthesis.addEventListener) {
       voicesHooked = true;
       window.speechSynthesis.addEventListener('voiceschanged', () => {
         voicesHooked = false;
-        voiceCache = pickVoice();
+        voiceCache = pick();
         // 音色是异步加载的，加载到了就重新给原生一次机会
-        if (voiceCache) { nativeOff = false; nativeFails = 0; }
+        if (voiceCache.length) { nativeOff = false; nativeFails = 0; }
       }, { once: true });
     }
     return voiceCache;
@@ -4080,7 +4087,8 @@ const TTS = (() => {
         utter.pitch = o.pitch != null ? o.pitch : pitch;
         utter.volume = 1;
         utter.lang = 'zh-CN';
-        const v = zhVoice();
+        const list = zhVoiceList();
+        const v = opts.altVoice && list.length > 1 ? list[1] : list[0];
         if (v) utter.voice = v;
         utter.onstart = () => {
           settled = true;
@@ -4170,6 +4178,20 @@ const TTS = (() => {
       if (!enabled || (scope !== 'all' && scope !== 'speech')) return false;
       return speak((name ? name + '，' : '') + text);   // 前缀用逗号，比「说：」省半秒
     },
+    /* 旁白：换一个音色、压低一点、稍慢，和角色发言区分开 */
+    narrate(text) {
+      if (!enabled || !narrOn) return false;
+      if (typeof FAST !== 'undefined' && FAST) return false;
+      const body = clean(text);
+      if (!body) return false;
+      const mySeq = ++seq;
+      silence();
+      const opts = { rate: Math.max(0.8, rate * 0.9), pitch: 0.75, altVoice: true };
+      if (canNative()) return talkNative(body, opts, mySeq);
+      return talkOnline(body, opts, mySeq);
+    },
+    setNarr(v) { narrOn = !!v; },
+    get narr() { return narrOn; },
     sys(text) {
       if (!enabled || scope !== 'all') return false;
       return speak(text, { rate: rate * 0.9, pitch: 0.92 });
@@ -4572,7 +4594,13 @@ async function nightPhase(id) {
       } else {
         ans = await callLLM({
           system: sysPrompt(w, { task: 'chat' }),
-          user: '【狼人夜聊】\n你的狼队友：' + mates +
+          /* 第一夜还没有任何发言，必须说清楚，否则模型会编「刚才谁说得多」
+             这类不存在的信息去支撑刀口 */
+          user: '【狼人夜聊】\n现在是第 ' + S.round + ' 夜。' +
+                (S.round === 1
+                  ? '还没有人发过言，你手上没有任何发言信息。不要编造别人说过什么，只能说直觉、座位位置，或者「先刀中间位置」这种朴素理由。'
+                  : publicState()) +
+                '\n你的狼队友：' + mates +
                 '\n可刀的对象：' + candText +
                 '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
           runId: id,
@@ -4597,7 +4625,9 @@ async function nightPhase(id) {
     const picked = await pool(wolvesAlive.filter(w => !isMe(w)), CFG.conc, async w => {
       await gate(id);
       return (await chooseSeat(w, id,
-        '【狼人定刀】\n夜聊记录：\n' + lines.join('\n') + '\n\n可刀的对象：' + candText,
+        '【狼人定刀】\n现在是第 ' + S.round + ' 夜。' +
+        (S.round === 1 ? '还没有人发过言，没有发言信息可参考，凭直觉和位置选。' : '') +
+        '\n夜聊记录：\n' + lines.join('\n') + '\n\n可刀的对象：' + candText,
         candSeats, w.spec, 'kill')).seat;
     });
     if (wolvesAlive.some(isMe)) picked.push(myKill);
@@ -5355,7 +5385,7 @@ async function startGame() {
   try {
     msgSys('对局开始，' + n + ' 名玩家 · ' + usablePool().length + ' 家模型混战');
     if (CFG.autoIdentity) {
-      msgEvent('🪞', '各自开始给自己起名、写人设、画头像。', 'good');
+      msgEvent('🪞', '牌桌上的人开始互相打量，各自报上名字和来历。');
       await genIdentities(id);
     }
     /* 参与模式：先把底牌摊给玩家看 */
@@ -5761,6 +5791,16 @@ $('smBgm').addEventListener('change', () => {
   saveCfg();
 });
 
+/* 声音菜单：旁白 */
+$('smNarr').addEventListener('change', () => {
+  const on = $('smNarr').checked;
+  TTS.setNarr(on);
+  saveCfg();
+  if (on && TTS.enabled) {
+    TTS.narrate('旁白已开启。天黑请闭眼，第一夜，狼人开始行动。');
+  }
+});
+
 /* 声音菜单：语音播报 */
 $('smTts').addEventListener('change', () => {
   const on = $('smTts').checked;
@@ -5796,6 +5836,10 @@ function syncTtsUI(on) {
   if (cb) cb.checked = on;
   const smb = $('smBgm');
   if (smb && typeof BGM !== 'undefined') smb.checked = BGM.enabled;
+  const smn = $('smNarr');
+  if (smn && typeof TTS !== 'undefined') smn.checked = on && TTS.narr;
+  const cn = $('ttsNarr');
+  if (cn && typeof TTS !== 'undefined') cn.checked = on && TTS.narr;
   const b = $('soundBtn');
   const sfxOn = (typeof SFX !== 'undefined') ? SFX.enabled : true;
   const bgmOn = (typeof BGM !== 'undefined') ? BGM.enabled : true;
@@ -5812,6 +5856,12 @@ const ttsCb = $('ttsEnabled');
 if (ttsCb) ttsCb.addEventListener('change', () => {
   TTS.setEnabled(ttsCb.checked);
   syncTtsUI(ttsCb.checked);
+  saveCfg();
+});
+const ttsNarrCb = $('ttsNarr');
+if (ttsNarrCb) ttsNarrCb.addEventListener('change', () => {
+  TTS.setNarr(ttsNarrCb.checked);
+  syncTtsUI(TTS.enabled);
   saveCfg();
 });
 const ttsRateSel = $('ttsRate');
