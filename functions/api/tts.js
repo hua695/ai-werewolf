@@ -69,9 +69,11 @@ export async function onRequestGet(context) {
     const res = await fetch(url, {
       headers: {
         Upgrade: 'websocket',
-        Origin: 'https://edge.microsoft.com',
+        // 微软只认 Edge 朗读扩展发起的连接，Origin 必须是这个扩展 ID
+        Origin: 'chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) ' +
           'Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+        'Accept-Language': 'en-US,en;q=0.9',
         Pragma: 'no-cache',
         'Cache-Control': 'no-cache'
       }
