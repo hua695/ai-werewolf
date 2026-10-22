@@ -386,6 +386,8 @@ body.end-good .stage-bg .shade::after{opacity:0}
   transition:background .2s,transform .2s;
 }
 .end-banner .eb-btn:hover{background:rgba(217,169,75,.18);transform:translateY(-1px)}
+.end-banner .eb-actions{display:flex;gap:10px;justify-content:center;margin-top:16px}
+.end-banner .eb-actions .eb-btn{margin-top:0}
 .end-banner.good .eb-btn{color:#a8c6ee;border-color:rgba(125,167,224,.55);background:rgba(125,167,224,.1)}
 /* 结局时把消息流压暗，让胜利画面透出来；复盘仍可滚动查看 */
 body.is-over .feed-inner{opacity:.26;transition:opacity 1s var(--ease)}
@@ -1193,12 +1195,22 @@ body.player-view .whisper{display:none!important}
 .deal-ico{font-size:42px;line-height:1}
 .deal-role{font-size:21px;font-weight:800;letter-spacing:.1em;margin:9px 0 3px}
 .deal-camp{font-size:11px;color:var(--text-3);letter-spacing:.16em}
+.deal-who{margin-top:8px;font-size:11.5px;color:#cfb478;letter-spacing:.04em}
 .deal-skill{
   margin-top:14px;padding:11px 12px;border-radius:9px;background:rgba(255,255,255,.045);
   font-size:12.5px;color:var(--text-2);line-height:1.75;text-align:left;
 }
-.deal-rules{margin-top:10px;font-size:11.5px;color:var(--text-3);line-height:1.8;text-align:left}
+.deal-rules{margin-top:12px;font-size:11.5px;color:var(--text-3);line-height:1.8;text-align:left}
 .deal-rules b{color:#cfb478;font-weight:700}
+/* 规则默认收起：卡片第一眼要落在「我是什么身份」上 */
+.deal-rules summary{
+  cursor:pointer;list-style:none;font-size:11px;letter-spacing:.12em;
+  color:var(--text-3);padding:4px 0;
+}
+.deal-rules summary::-webkit-details-marker{display:none}
+.deal-rules summary::before{content:'▸ ';color:var(--gold)}
+.deal-rules details[open] summary::before{content:'▾ '}
+.deal-rules .dr-body{margin-top:6px;padding-top:6px;border-top:1px solid var(--line-soft)}
 .deal-btn{margin-top:15px;width:100%}
 
 /* 记牌板 */
@@ -1940,6 +1952,7 @@ body.is-day .bet-panel{
     <div class="deal-ico" id="dealIco">🂠</div>
     <div class="deal-role" id="dealRole">你的身份</div>
     <div class="deal-camp" id="dealCamp">好人阵营</div>
+    <div class="deal-who" id="dealWho"></div>
     <div class="deal-skill" id="dealSkill"></div>
     <div class="deal-rules" id="dealRules"></div>
     <button class="btn primary deal-btn" id="dealOk">收好底牌，开始</button>
@@ -3395,14 +3408,17 @@ function showDealCard(p) {
     $('dealRole').textContent = meta.name;
     $('dealRole').style.color = meta.color;
     $('dealCamp').textContent = wolf ? '狼人阵营' : '好人阵营';
+    $('dealWho').textContent = p.seat + ' 号位 · ' + (p.human ? '这是你自己的牌' : '你是「' + p.name + '」');
     $('dealSkill').textContent = ROLE_SKILL[p.role] || '';
+    // 规则折起来：这张卡要先让你看清「我是什么」，再决定要不要读规则
     $('dealRules').innerHTML =
-      '<b>' + p.seat + ' 号位</b> · ' + (p.human ? '你自己的牌' : '你是「' + esc(p.name) + '」') + '<br>' +
+      '<details class="dr"><summary>规则与提示</summary><div class="dr-body">' +
       '胜负：好人放逐全部狼人获胜；' +
       (S.winMode === 'parity' ? '狼人杀到存活人数与狼数持平就赢。' : '狼人杀光神职或杀光平民就赢。') + '<br>' +
       '出局不翻身份牌，死者的身份只在复盘时公开。<br>' +
       '本局同守同救算平安：守卫和女巫同时保下同一个人，那个人不会死。<br>' +
-      '被毒杀的人不能开枪。';
+      '被毒杀的人不能开枪。' +
+      '</div></details>';
     const box = $('deal');
     box.hidden = false;
     SFX.reveal();
@@ -3650,6 +3666,10 @@ function outputContract(task, wolf) {
       ];
       arr.push('如果你上一轮已经被点到名，先用一句话回应那个质疑，再讲别人。' +
         '同一个比喻、同一种开场、同一句口头禅不要连着用两轮，桌上的人会听腻。');
+      /* 给不同性格不同的展开顺序。之前所有人都是「点名→接话→收尾」的同一套，
+         结果十几个人说话像一个模子刻出来的。 */
+      arr.push(speakSkeleton(p));
+      arr.push('不要用「我先听一轮」「我听着还行」「信息还不够」这类万能开场——那是没话找话。');
       if (wolf) {
         arr.push('这一段必须把自己说成好人。你可以怀疑任何人，包括你的狼队友——把队友当靶子是允许的战术。' +
           '唯一禁止的是宣告身份：不要说"我是狼""他是我队友""我们狼队"这类话。');
@@ -3840,8 +3860,29 @@ function publicState() {
   return lines.join('\n');
 }
 
-function privateInfo(p) {
-  const out = [];
+/* 按性格给发言骨架：同样是「点名+依据+态度」，但展开顺序不同，
+   十几个人才不会说出同一段话 */
+function speakSkeleton(p) {
+  const t = String(p && p.persona || '') + ' ' + String(p && p.style || '');
+  if (/毒舌|犀利|直接|强势|好胜|不留情面|爱挑刺/.test(t)) {
+    return '你的展开方式：先揪住对方发言里的一个具体漏洞（最好引他的原话），怼完再给自己的位置。不要先客套。';
+  }
+  if (/严谨|理性|冷静|医生|工程师|教师|律师|分析|时间线/.test(t)) {
+    return '你的展开方式：先给结论，再按顺序列一到两条依据，最后收在票上。不要抒情，不要形容心情。';
+  }
+  if (/活泼|爽朗|爱笑|热情|直爽|自来熟|嗓门/.test(t)) {
+    return '你的展开方式：先用一句直觉或情绪定调（"我就是觉得不对"这种），再点名、再补理由，结尾干脆。';
+  }
+  if (/腼腆|内向|社恐|怯|小声|不爱说话|结巴/.test(t)) {
+    return '你的展开方式：先说一句「我不太确定」，再给一个偏保守的判断，票可以留着，但要让人知道你倾向谁。';
+  }
+  if (/温柔|耐心|细腻|文静|轻声|斯文/.test(t)) {
+    return '你的展开方式：先接住上一个人的话（认同或者补充），再讲自己观察到的细节，最后轻轻给个倾向。';
+  }
+  return '你的展开方式：先给判断，再补一条依据，收在票上。句子可以短，别写成三段汇报。';
+}
+
+function privateInfo(p) {  const out = [];
   if (isWolfRole(p.role)) {
     const mates = aliveSeats().filter(s => isWolfRole(s.role) && s.seat !== p.seat);
     out.push('你的狼队友：' + (mates.length
@@ -6714,11 +6755,182 @@ function showEndBanner(goodWin) {
     '<div class="eb-inner">' +
       '<div class="eb-title">' + (goodWin ? '好人阵营胜利' : '狼人阵营胜利') + '</div>' +
       '<div class="eb-sub">共进行 ' + S.round + ' 天 · 消耗 ' + tokens + ' token</div>' +
-      '<div class="eb-btn" id="ebReveal">查看复盘</div>' +
+      '<div class="eb-actions">' +
+        '<span class="eb-btn" id="ebReveal">查看复盘</span>' +
+        '<span class="eb-btn" id="ebSave">保存战报</span>' +
+      '</div>' +
     '</div>';
   $('stage').appendChild(el);
   const btn = el.querySelector('#ebReveal');
   if (btn) btn.addEventListener('click', () => openReveal());
+  const sb = el.querySelector('#ebSave');
+  if (sb) sb.addEventListener('click', () => saveReport());
+}
+
+/* 战报图：把这一局的结果画成一张能存下来的图。
+   纯 Canvas 绘制，不依赖任何外部库，也不用把页面截图（那样会带上播放器界面）。 */
+function saveReport() {
+  if (!S) return;
+  const good = S.winner === 'good';
+  const W = 900;
+  const rows = Math.ceil(S.seats.length / 3);
+  const H = 400 + rows * 124 + 130;
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+
+  const gold = '#d9a94b';
+  const accent = good ? '#7da7e0' : '#cf4433';
+  const dim = '#8b93a5';
+
+  // 底
+  g.fillStyle = '#0a0e15';
+  g.fillRect(0, 0, W, H);
+  const rg = g.createRadialGradient(W / 2, 240, 40, W / 2, 240, 620);
+  rg.addColorStop(0, good ? 'rgba(56,74,104,.55)' : 'rgba(96,36,32,.5)');
+  rg.addColorStop(1, 'rgba(10,14,21,0)');
+  g.fillStyle = rg;
+  g.fillRect(0, 0, W, H);
+
+  // 外框
+  g.strokeStyle = 'rgba(217,169,75,.28)';
+  g.lineWidth = 2;
+  g.strokeRect(28, 28, W - 56, H - 56);
+
+  // 顶栏
+  g.fillStyle = gold;
+  g.font = '600 22px "Microsoft YaHei", "PingFang SC", sans-serif';
+  g.textAlign = 'left';
+  g.fillText('AI 狼人杀 · 对局战报', 56, 88);
+  g.fillStyle = dim;
+  g.font = '16px "Microsoft YaHei", sans-serif';
+  g.textAlign = 'right';
+  const d = new Date();
+  g.fillText(d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') + '.' +
+    String(d.getDate()).padStart(2, '0') + '  ' + S.seats.length + ' 人局', W - 56, 88);
+
+  // 胜负
+  g.textAlign = 'center';
+  g.fillStyle = accent;
+  g.font = '700 62px "Songti SC", "SimSun", serif';
+  g.fillText(good ? '好人阵营胜利' : '狼人阵营胜利', W / 2, 200);
+  g.fillStyle = 'rgba(233,236,243,.72)';
+  g.font = '18px "Microsoft YaHei", sans-serif';
+  const tokens = (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString();
+  g.fillText('共 ' + S.round + ' 天 · 消耗 ' + tokens + ' token · 筹码 ' + BET.chips, W / 2, 240);
+
+  // 分隔
+  g.strokeStyle = 'rgba(217,169,75,.18)';
+  g.beginPath();
+  g.moveTo(120, 286);
+  g.lineTo(W - 120, 286);
+  g.stroke();
+
+  // 座位网格
+  const cols = 3;
+  const cellW = (W - 160) / cols;
+  const cellH = 128;
+  const top = 330;
+  S.seats.forEach((s, i) => {
+    const cx = 80 + (i % cols) * cellW;
+    const cy = top + Math.floor(i / cols) * cellH;
+    const meta = ROLE_META[s.role];
+    const dead = !s.alive;
+
+    // 底板
+    g.fillStyle = dead ? 'rgba(255,255,255,.028)' : 'rgba(255,255,255,.055)';
+    roundRect(g, cx + 6, cy + 6, cellW - 22, cellH - 20, 12);
+    g.fill();
+    g.strokeStyle = dead ? 'rgba(255,255,255,.06)' : 'rgba(217,169,75,.22)';
+    g.lineWidth = 1;
+    g.stroke();
+
+    // 座位号
+    g.beginPath();
+    g.arc(cx + 42, cy + 34, 17, 0, Math.PI * 2);
+    g.fillStyle = dead ? 'rgba(255,255,255,.06)' : 'rgba(217,169,75,.14)';
+    g.fill();
+    g.fillStyle = dead ? '#5a6272' : gold;
+    g.font = '700 16px "Microsoft YaHei", sans-serif';
+    g.textAlign = 'center';
+    g.fillText(String(s.seat), cx + 42, cy + 40);
+
+    // 名字
+    g.textAlign = 'left';
+    g.fillStyle = dead ? '#6b7385' : '#e9ecf3';
+    g.font = '600 21px "Microsoft YaHei", sans-serif';
+    g.fillText(s.name, cx + 70, cy + 32);
+
+    // 身份
+    g.fillStyle = dead ? 'rgba(255,255,255,.28)' : (meta ? meta.color : gold);
+    g.font = '15px "Microsoft YaHei", sans-serif';
+    g.fillText((meta ? meta.name : s.role) + (dead ? ' · 出局' : ' · 存活'), cx + 70, cy + 58);
+
+    // 模型
+    g.fillStyle = 'rgba(139,147,165,.75)';
+    g.font = '13px "Microsoft YaHei", sans-serif';
+    g.fillText(seatModelShort(s), cx + 22, cy + 88);
+  });
+
+  // 底部：眼神榜
+  const wolves = new Set(S.seats.filter(s => isWolfRole(s.role)).map(s => s.seat));
+  const stats = {};
+  S.log.filter(l => l.kind === 'vote').forEach(l => {
+    (l.picks || []).forEach(p => {
+      if (p.to == null) return;
+      const r = stats[p.from] || (stats[p.from] = { hit: 0, total: 0 });
+      r.total++;
+      if (wolves.has(p.to)) r.hit++;
+    });
+  });
+  const ranked = Object.keys(stats).map(Number)
+    .filter(n => stats[n].total >= 2)
+    .sort((a, b) => (stats[b].hit / stats[b].total) - (stats[a].hit / stats[a].total));
+
+  const footY = top + rows * cellH + 30;
+  g.textAlign = 'center';
+  if (ranked.length) {
+    const best = seatOf(ranked[0]);
+    const worst = seatOf(ranked[ranked.length - 1]);
+    if (best) {
+      g.fillStyle = gold;
+      g.font = '17px "Microsoft YaHei", sans-serif';
+      g.fillText('眼神最准  ' + best.name + '  ' + stats[ranked[0]].hit + '/' + stats[ranked[0]].total + ' 票落在狼身上', W / 2, footY);
+    }
+    if (worst && worst !== best && stats[ranked[ranked.length - 1]].hit === 0) {
+      g.fillStyle = 'rgba(207,68,51,.85)';
+      g.font = '15px "Microsoft YaHei", sans-serif';
+      g.fillText('毒奶担当  ' + worst.name + '  一票没中', W / 2, footY + 30);
+    }
+  }
+  g.fillStyle = 'rgba(139,147,165,.55)';
+  g.font = '13px "Microsoft YaHei", sans-serif';
+  g.textAlign = 'center';
+  g.fillText('DeepSeek · 豆包 · Kimi · GLM · Qwen 同坐一桌', W / 2, H - 56);
+
+  cv.toBlob(blob => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '狼人杀战报-' + new Date().toISOString().slice(0, 10) + '.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast('战报已保存到下载文件夹');
+  }, 'image/png');
+}
+
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
 }
 
 function finishGame() {
