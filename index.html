@@ -2214,20 +2214,52 @@ function makeAvatarDealer() {
 
 /* ============================================================
    性格 → 声音
-   从 persona / style 里抓关键词，给每个角色一组固定的音高与语速。
-   系统音色数量不可控（多数设备只有一两个中文音色），但 pitch/rate
-   的组合足以让 6-9 个人听得出区别，不再全员一个声线。
+
+   Edge / Chromium 能拿到的中文神经网络音色（实测本机）：
+     女：晓晓、晓伊、曉臻(台)、曉雨(台)
+     男：云扬、云健、云希、云夏、雲哲(台)
+   12 个角色 + 1 个旁白要用这些音色演出 13 个人，所以每个音色最多
+   演 4 个"变体"，靠音高和语速错开，同音色也不会听成同一个人。
    ============================================================ */
 const VOICE_PROFILES = [
-  { name: '沉稳', words: ['沉稳', '冷静', '理性', '克制', '寡言', '话少', '淡漠', '冷淡'], pitch: 0.82, rate: 0.94, voice: 0 },
-  { name: '严谨', words: ['严谨', '认真', '专业', '谨慎', '老练', '一丝不苟', '医生', '教师', '工程师', '律师'], pitch: 0.9, rate: 0.97, voice: 1 },
-  { name: '温柔', words: ['温柔', '温和', '细腻', '耐心', '文静', '柔软', '轻声', '斯文'], pitch: 1.02, rate: 0.95, voice: 2 },
-  { name: '活泼', words: ['活泼', '开朗', '热情', '爱笑', '话多', '外向', '自来熟', '急性子'], pitch: 1.16, rate: 1.12, voice: 3 },
-  { name: '犀利', words: ['毒舌', '犀利', '好胜', '强势', '张扬', '直接', '怼', '咄咄逼人'], pitch: 1.08, rate: 1.1, voice: 3 },
-  { name: '腼腆', words: ['腼腆', '内向', '社恐', '怕生', '小声', '怯', '不爱说话'], pitch: 1.06, rate: 0.9, voice: 2 },
-  { name: '爽朗', words: ['爽朗', '直爽', '阳光', '爽快', '豪爽', '大方', '热络'], pitch: 1.1, rate: 1.06, voice: 1 },
-  { name: '软萌', words: ['可爱', '软萌', '元气', '少女', '孩子气', '撒娇', '娃娃音'], pitch: 1.18, rate: 1.08, voice: 3 }
+  { name: '沉稳', words: ['沉稳', '冷静', '理性', '克制', '寡言', '话少', '淡漠', '冷淡'],
+    pitch: 0.82, rate: 0.94, male: ['云扬', '雲哲', '云健'], female: ['曉臻', '晓晓'] },
+  { name: '严谨', words: ['严谨', '认真', '专业', '谨慎', '老练', '一丝不苟', '医生', '教师', '工程师', '律师'],
+    pitch: 0.9, rate: 0.97, male: ['云扬', '雲哲', '云健'], female: ['曉臻', '晓晓'] },
+  { name: '温柔', words: ['温柔', '温和', '细腻', '耐心', '文静', '柔软', '轻声', '斯文'],
+    pitch: 1.02, rate: 0.95, male: ['云扬', '云夏'], female: ['晓晓', '曉臻'] },
+  { name: '活泼', words: ['活泼', '开朗', '热情', '爱笑', '话多', '外向', '自来熟', '急性子'],
+    pitch: 1.16, rate: 1.12, male: ['云希', '云夏'], female: ['晓伊', '曉雨'] },
+  { name: '犀利', words: ['毒舌', '犀利', '好胜', '强势', '张扬', '直接', '怼', '咄咄逼人'],
+    pitch: 1.08, rate: 1.1, male: ['云健', '云希'], female: ['晓伊', '曉雨'] },
+  { name: '腼腆', words: ['腼腆', '内向', '社恐', '怕生', '小声', '怯', '不爱说话'],
+    pitch: 1.06, rate: 0.9, male: ['云夏', '云希'], female: ['曉雨', '晓伊'] },
+  { name: '爽朗', words: ['爽朗', '直爽', '阳光', '爽快', '豪爽', '大方', '热络'],
+    pitch: 1.1, rate: 1.06, male: ['云希', '云健'], female: ['晓伊', '晓晓'] },
+  { name: '软萌', words: ['可爱', '软萌', '元气', '少女', '孩子气', '撒娇', '娃娃音'],
+    pitch: 1.18, rate: 1.08, male: ['云夏'], female: ['曉雨', '晓伊'] }
 ];
+
+/* 同一音色演多个人时的错开量 */
+const VOICE_SHIFTS = [
+  { p: 0, r: 0 },
+  { p: -0.11, r: -0.05 },
+  { p: 0.12, r: 0.06 },
+  { p: -0.2, r: 0.1 }
+];
+
+/* 按音色名判断性别：云/雲 男，晓/曉 女 */
+function voiceGender(v) {
+  const n = String((v && v.name) || '');
+  if (/Microsoft\s*(云|雲)/.test(n) || /\bYun/i.test(n) || /Kangkang/i.test(n)) return 'male';
+  if (/Microsoft\s*(晓|曉)/.test(n) || /\bXiao/i.test(n) || /Huihui|Yaoyao/i.test(n)) return 'female';
+  return 'other';
+}
+
+function findVoiceByName(list, alias) {
+  if (!list || !list.length) return null;
+  return list.find(v => String(v.name || '').includes(alias)) || null;
+}
 
 function voiceProfileFor(persona, style, seat) {
   const text = String(persona || '') + ' ' + String(style || '');
@@ -2239,7 +2271,70 @@ function voiceProfileFor(persona, style, seat) {
     if (hit > bestHit) { bestHit = hit; best = p; }
   }
   const pick = best || VOICE_PROFILES[seat % VOICE_PROFILES.length];
-  return { name: pick.name, pitch: pick.pitch, rate: pick.rate, voice: pick.voice };
+  return { name: pick.name, pitch: pick.pitch, rate: pick.rate, male: pick.male, female: pick.female };
+}
+
+/* 一局开始前把声音分给每个人：按性别挑音色，同一音色最多演 4 个人，
+   靠音高语速错开；旁白单独用最稳的男声，压得更低。 */
+function buildVoiceCast() {
+  if (!S || !S.seats || typeof TTS === 'undefined' || !TTS.listVoices) return null;
+  const list = TTS.listVoices() || [];
+  if (!list.length) return null;
+
+  const used = {};
+  let distinct = 0;
+  const players = S.seats.filter(s => !s.human);
+
+  players.forEach(s => {
+    const g = s.gender === 'female' ? 'female' : 'male';
+    const prof = s.voiceProf || VOICE_PROFILES[0];
+    const prefer = (g === 'female' ? prof.female : prof.male) || [];
+
+    let chosen = null;
+    for (const alias of prefer) {
+      const v = findVoiceByName(list, alias);
+      if (!v) continue;
+      const n = used[String(v.name)] || 0;
+      if (n >= VOICE_SHIFTS.length) continue;
+      // 同样可用时选当前用得最少的，别把同一个音色塞满 4 个人
+      if (!chosen || n < chosen.idx) chosen = { v, idx: n };
+    }
+    if (!chosen) {
+      // 该性别的音色都演满了：退而求其次，拿用得最少的同性别音色
+      const pool = list.filter(v => voiceGender(v) === g);
+      const v = pool.slice().sort((x, y) =>
+        (used[String(x.name)] || 99) - (used[String(y.name)] || 99))[0] || list[0];
+      chosen = { v, idx: used[String(v.name)] || 0 };
+    }
+
+    const v = chosen.v;
+    if (!v) return;
+    const key = String(v.name);
+    used[key] = (used[key] || 0) + 1;
+    if (used[key] === 1) distinct++;
+
+    const sh = VOICE_SHIFTS[Math.min(chosen.idx, VOICE_SHIFTS.length - 1)];
+    const round2 = n => Math.round(n * 100) / 100;
+    s.voice = {
+      name: key,
+      kind: prof.name,
+      pitch: round2(Math.min(1.8, Math.max(0.5, prof.pitch + sh.p))),
+      rate: round2(Math.min(2, Math.max(0.6, prof.rate + sh.r)))
+    };
+  });
+
+  // 旁白必须是最标准的普通话，云扬优先；台湾腔只在没有普通话男声时兜底
+  const malePool = list.filter(v => voiceGender(v) === 'male');
+  const narrOrder = ['云扬', '云健', '云夏', '云希', '雲哲'];
+  let narr = null;
+  for (const alias of narrOrder) {
+    const v = findVoiceByName(malePool, alias);
+    if (v) { narr = v; break; }
+  }
+  if (!narr) narr = malePool[0] || list[0];
+
+  TTS.setCast({ narr: narr ? String(narr.name) : '', distinct });
+  return { narr: narr ? String(narr.name) : '', distinct };
 }
 
 /* 按人数先排好性别：男女尽量均衡，且不超过各自头像池容量（男 7 女 5）。
@@ -3660,7 +3755,7 @@ function msgSpeech(p, tag) {
       }
 
       // 声音先起，打字跟上，两者基本同时结束；自己说的话不用再念给自己听
-      if (TTS.enabled && !isMe(p)) TTS.speech(plain, p.name, p.voiceProf);
+      if (TTS.enabled && !isMe(p)) TTS.speech(plain, p.name, p.voice);
 
       // 快进、减少动效、文本太短，都不必逐字打
       if (FAST || REDUCED || plain.length < 20) {
@@ -4181,9 +4276,11 @@ const TTS = (() => {
         utter.lang = 'zh-CN';
         const list = zhVoiceList();
         let v = null;
-        if (o.voiceIdx != null) v = voiceByIndex(list, o.voiceIdx);   // 角色自己的音色
-        else if (o.altVoice) v = list.length > 1 ? list[1] : list[0];  // 旁白
-        else v = list[0];
+        // 优先用这一局给该角色分配好的音色
+        if (o.voiceName) v = list.find(x => String(x.name) === o.voiceName) || null;
+        if (!v && o.voiceIdx != null) v = voiceByIndex(list, o.voiceIdx);
+        if (!v && o.altVoice) v = list.length > 1 ? list[1] : list[0];
+        if (!v) v = list[0];
         if (v) utter.voice = v;
         utter.onstart = () => {
           settled = true;
@@ -4226,6 +4323,7 @@ const TTS = (() => {
     '旁白': { voice: 'zh-CN-YunyangNeural', rate: '-10%', pitch: '-6Hz' }
   };
   let edgeOk = null;   // null 未知 / true 可用 / false 本局不再尝试
+  let cast = {};       // 本局的声音分配：{ narr: 旁白音色名, distinct: 用了几种音色 }
 
   function canEdge() {
     return edgeOk !== false && typeof window.Audio === 'function' && location.protocol !== 'file:';
@@ -4334,18 +4432,18 @@ const TTS = (() => {
         await sleep(180);
       }
     },
-    /* prof：该角色的声纹（pitch/rate/voice），让每个人说话不像同一个人 */
-    speech(text, name, prof) {
+    /* prof：该角色的声纹（pitch/rate/音色），让每个人说话不像同一个人 */
+    speech(text, name, voice) {
       if (!enabled || ttsMode === 'key') return false;
       if (scope !== 'all' && scope !== 'speech') return false;
-      const p = prof || {};
+      const v = voice || {};
       let body = String(text || '');
       if (ttsMode === 'brief') body = clip(body, 60);
       return speak((name ? name + '，' : '') + body, {
-        rate: rate * (p.rate || 1),
-        pitch: p.pitch != null ? p.pitch : 1,
-        voiceIdx: p.voice != null ? p.voice : 0,
-        prof: p
+        rate: rate * (v.rate || 1),
+        pitch: v.pitch != null ? v.pitch : 1,
+        voiceName: v.name || '',
+        prof: { name: v.kind || '温柔' }   // 性格名，留给 Edge 通道用
       });
     },
     /* 旁白：换一个音色、压低一点、稍慢，和角色发言区分开 */
@@ -4356,7 +4454,7 @@ const TTS = (() => {
       if (!body) return false;
       const mySeq = ++seq;
       silence();
-      const opts = { rate: Math.max(0.8, rate * 0.9), pitch: 0.75, altVoice: true };
+      const opts = { rate: Math.max(0.8, rate * 0.9), pitch: 0.7, altVoice: true, voiceName: cast.narr || '' };
       const nativeFallback = () => {
         if (mySeq !== seq) return;
         if (canNative()) talkNative(body, opts, mySeq);
@@ -4369,6 +4467,8 @@ const TTS = (() => {
     setNarr(v) { narrOn = !!v; },
     get narr() { return narrOn; },
     probeEdge,
+    setCast(c) { cast = c || {}; },
+    listVoices() { return zhVoiceList().slice(); },
     setMode(v) { ttsMode = ['full', 'brief', 'key'].includes(v) ? v : 'full'; },
     get mode() { return ttsMode; },
     /* 供界面显示：本机有几个中文音色，决定角色声纹能拉开多少 */
@@ -5584,6 +5684,7 @@ async function startGame() {
     if (CFG.autoIdentity) {
       msgEvent('🪞', '牌桌上的人开始互相打量，各自报上名字和来历。');
       await genIdentities(id);
+      buildVoiceCast();   // 人设齐了，按性别和性格把 12 个声音分下去
     }
     /* 参与模式：先把底牌摊给玩家看 */
     if (MODE === 'play') {
