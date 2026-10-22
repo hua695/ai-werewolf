@@ -1336,6 +1336,14 @@ body.player-view .whisper{display:none!important}
             <option value="2">很快</option>
           </select>
         </div>
+        <div class="sm-item">
+          <label class="sm-label">朗读范围</label>
+          <select class="sm-sel" id="smMode">
+            <option value="full" selected>发言全文</option>
+            <option value="brief">只念开头</option>
+            <option value="key">只念旁白</option>
+          </select>
+        </div>
         <div class="sm-item sm-sub" id="smTtsSkip" style="display:none">
           <button class="sm-btn" id="smSkip">跳过当前播报</button>
         </div>
@@ -1872,6 +1880,7 @@ function saveCfg() {
       bgm: (typeof BGM !== 'undefined') ? BGM.enabled : true,
       tts: (typeof TTS !== 'undefined') ? TTS.enabled : true,
       narr: (typeof TTS !== 'undefined') ? TTS.narr : true,
+      ttsMode: (typeof TTS !== 'undefined') ? TTS.mode : 'full',
       ttsRate: (typeof TTS !== 'undefined') ? TTS.rate : 1,
       ttsScope: (typeof TTS !== 'undefined') ? TTS.scope : 'speech',
       pool: POOL.map(p => ({
@@ -1920,6 +1929,11 @@ function loadCfg() {
       syncTtsUI(!!c.tts);
     }
     if (c.narr != null) { TTS.setNarr(!!c.narr); }
+    if (c.ttsMode) {
+      TTS.setMode(c.ttsMode);
+      const smm = $('smMode');
+      if (smm) smm.value = c.ttsMode;
+    }
     if (c.bgm != null) {
       BGM.setEnabled(!!c.bgm);
       const smb = $('smBgm');
@@ -2193,6 +2207,36 @@ function makeAvatarDealer() {
     const f = take(AVATAR_FILES[g]) || take(AVATAR_FILES[other]) || AVATAR_FILES[g][0];
     return { img: f };
   };
+}
+
+/* ============================================================
+   性格 → 声音
+   从 persona / style 里抓关键词，给每个角色一组固定的音高与语速。
+   系统音色数量不可控（多数设备只有一两个中文音色），但 pitch/rate
+   的组合足以让 6-9 个人听得出区别，不再全员一个声线。
+   ============================================================ */
+const VOICE_PROFILES = [
+  { name: '沉稳', words: ['沉稳', '冷静', '理性', '克制', '寡言', '话少', '淡漠', '冷淡'], pitch: 0.82, rate: 0.94, voice: 0 },
+  { name: '严谨', words: ['严谨', '认真', '专业', '谨慎', '老练', '一丝不苟', '医生', '教师', '工程师', '律师'], pitch: 0.9, rate: 0.97, voice: 1 },
+  { name: '温柔', words: ['温柔', '温和', '细腻', '耐心', '文静', '柔软', '轻声', '斯文'], pitch: 1.02, rate: 0.95, voice: 2 },
+  { name: '活泼', words: ['活泼', '开朗', '热情', '爱笑', '话多', '外向', '自来熟', '急性子'], pitch: 1.16, rate: 1.12, voice: 3 },
+  { name: '犀利', words: ['毒舌', '犀利', '好胜', '强势', '张扬', '直接', '怼', '咄咄逼人'], pitch: 1.08, rate: 1.1, voice: 3 },
+  { name: '腼腆', words: ['腼腆', '内向', '社恐', '怕生', '小声', '怯', '不爱说话'], pitch: 1.06, rate: 0.9, voice: 2 },
+  { name: '爽朗', words: ['爽朗', '直爽', '阳光', '爽快', '豪爽', '大方', '热络'], pitch: 1.1, rate: 1.06, voice: 1 },
+  { name: '软萌', words: ['可爱', '软萌', '元气', '少女', '孩子气', '撒娇', '娃娃音'], pitch: 1.18, rate: 1.08, voice: 3 }
+];
+
+function voiceProfileFor(persona, style, seat) {
+  const text = String(persona || '') + ' ' + String(style || '');
+  let best = null;
+  let bestHit = 0;
+  for (const p of VOICE_PROFILES) {
+    let hit = 0;
+    for (const w of p.words) if (text.includes(w)) hit++;
+    if (hit > bestHit) { bestHit = hit; best = p; }
+  }
+  const pick = best || VOICE_PROFILES[seat % VOICE_PROFILES.length];
+  return { name: pick.name, pitch: pick.pitch, rate: pick.rate, voice: pick.voice };
 }
 
 /* 按人数先排好性别：男女尽量均衡，且不超过各自头像池容量（男 7 女 5）。
@@ -3613,7 +3657,7 @@ function msgSpeech(p, tag) {
       }
 
       // 声音先起，打字跟上，两者基本同时结束；自己说的话不用再念给自己听
-      if (TTS.enabled && !isMe(p)) TTS.speech(plain, p.name);
+      if (TTS.enabled && !isMe(p)) TTS.speech(plain, p.name, p.voiceProf);
 
       // 快进、减少动效、文本太短，都不必逐字打
       if (FAST || REDUCED || plain.length < 20) {
@@ -3985,6 +4029,7 @@ const TTS = (() => {
 
   let enabled = true;       // 语音播报默认开，老用户存过关就保持关
   let narrOn = true;        // 旁白单独开关，默认开
+  let ttsMode = 'full';     // 朗读范围：full 全文 / brief 只念开头 / key 只念旁白
   let rate = 1.3;           // 默认语速偏快一点，原生合成的 1.0 听起来太端着
   let pitch = 1;
   let scope = 'speech';
@@ -4002,7 +4047,16 @@ const TTS = (() => {
   const canOnline = () => typeof window.Audio === 'function' && location.protocol !== 'file:';
 
   /* 找中文音色。Chrome 首次 getVoices() 可能是空数组，等事件再取一次 */
-  /* 中文音色列表：第一个给角色发言，第二个（若有）给旁白，这样旁白和发言是两个人的声音 */
+  /* 音色池：1 号留给旁白，角色从 0/2/3 里取，系统只有一两个音色时自然回落 */
+  function voiceByIndex(list, i) {
+    if (!list || !list.length) return null;
+    if (list.length === 1) return list[0];
+    const slots = [0, 2, 3];
+    const slot = slots[Math.abs(i) % slots.length];
+    return list[Math.min(slot, list.length - 1)] || list[0];
+  }
+
+  /* 找中文音色列表：第一个给角色发言，第二个（若有）给旁白 */
   function zhVoiceList() {
     if (!window.speechSynthesis) return [];
     if (voiceCache) return voiceCache;
@@ -4108,7 +4162,10 @@ const TTS = (() => {
         utter.volume = 1;
         utter.lang = 'zh-CN';
         const list = zhVoiceList();
-        const v = opts.altVoice && list.length > 1 ? list[1] : list[0];
+        let v = null;
+        if (o.voiceIdx != null) v = voiceByIndex(list, o.voiceIdx);   // 角色自己的音色
+        else if (o.altVoice) v = list.length > 1 ? list[1] : list[0];  // 旁白
+        else v = list[0];
         if (v) utter.voice = v;
         utter.onstart = () => {
           settled = true;
@@ -4194,9 +4251,18 @@ const TTS = (() => {
         await sleep(180);
       }
     },
-    speech(text, name) {
-      if (!enabled || (scope !== 'all' && scope !== 'speech')) return false;
-      return speak((name ? name + '，' : '') + text);   // 前缀用逗号，比「说：」省半秒
+    /* prof：该角色的声纹（pitch/rate/voice），让每个人说话不像同一个人 */
+    speech(text, name, prof) {
+      if (!enabled || ttsMode === 'key') return false;
+      if (scope !== 'all' && scope !== 'speech') return false;
+      const p = prof || {};
+      let body = String(text || '');
+      if (ttsMode === 'brief') body = clip(body, 60);
+      return speak((name ? name + '，' : '') + body, {
+        rate: rate * (p.rate || 1),
+        pitch: p.pitch != null ? p.pitch : 1,
+        voiceIdx: p.voice != null ? p.voice : 0
+      });
     },
     /* 旁白：换一个音色、压低一点、稍慢，和角色发言区分开 */
     narrate(text) {
@@ -4212,6 +4278,8 @@ const TTS = (() => {
     },
     setNarr(v) { narrOn = !!v; },
     get narr() { return narrOn; },
+    setMode(v) { ttsMode = ['full', 'brief', 'key'].includes(v) ? v : 'full'; },
+    get mode() { return ttsMode; },
     sys(text) {
       if (!enabled || scope !== 'all') return false;
       return speak(text, { rate: rate * 0.9, pitch: 0.92 });
@@ -4516,6 +4584,7 @@ async function genIdentities(id) {
     s.name = info.name;
     s.persona = info.persona;
     s.style = info.style;
+    s.voiceProf = voiceProfileFor(info.persona, info.style, s.seat);
     s.avatar = dealAvatar(info.gender || genders[idx]);
     s.gender = info.gender || genders[idx];
     s.age = info.age;
@@ -5849,6 +5918,11 @@ $('smRate').addEventListener('change', () => {
   if (sel) sel.value = $('smRate').value;
   saveCfg();
 });
+$('smMode').addEventListener('change', () => {
+  TTS.setMode($('smMode').value);
+  saveCfg();
+  if ($('smMode').value === 'key') toast('只念旁白：角色发言不再朗读');
+});
 $('smSkip').addEventListener('click', () => {
   const was = TTS.skip();
   TYPER.cancelAll();            // 正在逐字打的那条也一起落到地上
@@ -5871,6 +5945,8 @@ function syncTtsUI(on) {
   if (smn && typeof TTS !== 'undefined') smn.checked = on && TTS.narr;
   const cn = $('ttsNarr');
   if (cn && typeof TTS !== 'undefined') cn.checked = on && TTS.narr;
+  const smm = $('smMode');
+  if (smm && typeof TTS !== 'undefined') smm.value = TTS.mode;
   const b = $('soundBtn');
   const sfxOn = (typeof SFX !== 'undefined') ? SFX.enabled : true;
   const bgmOn = (typeof BGM !== 'undefined') ? BGM.enabled : true;
