@@ -1525,11 +1525,11 @@ body.player-view .whisper{display:none!important}
         <div class="row2" style="margin-top:9px">
           <div class="field">
             <label>温度</label>
-            <input class="inp" id="temp" type="number" min="0" max="2" step="0.05" value="0.95">
+            <input class="inp" id="temp" type="number" min="0" max="2" step="0.05" value="0.6">
           </div>
           <div class="field">
             <label>并发数</label>
-            <input class="inp" id="conc" type="number" min="1" max="8" step="1" value="5">
+            <input class="inp" id="conc" type="number" min="1" max="8" step="1" value="6">
           </div>
         </div>
         <div class="row2">
@@ -1540,9 +1540,10 @@ body.player-view .whisper{display:none!important}
           <div class="field">
             <label>节奏</label>
             <select class="sel" id="pace">
-              <option value="auto" selected>自动</option>
+              <option value="auto">自动</option>
               <option value="0">极快</option>
               <option value="300">快</option>
+              <option value="430" selected>较快</option>
               <option value="900">慢</option>
             </select>
           </div>
@@ -1907,7 +1908,7 @@ function assignSpecs(n) {
 function readCfg() {
   const paceRaw = $('pace').value;
   return {
-    temp: Math.min(2, Math.max(0, Number($('temp').value) || 0.95)),
+    temp: Math.min(2, Math.max(0, Number($('temp').value) || 0.6)),
     conc: Math.min(8, Math.max(1, Number($('conc').value) || 3)),
     timeout: Math.min(240, Math.max(10, Number($('timeout').value) || 90)) * 1000,
     allowNoKey: $('allowNoKey').checked,
@@ -1929,6 +1930,7 @@ function saveCfg() {
   try {
     const c = readCfg();
     localStorage.setItem('ww.cfg', JSON.stringify({
+      v: 2,
       temp: c.temp, conc: c.conc, timeout: c.timeout / 1000,
       allowNoKey: c.allowNoKey, speechLen: c.speechLen, paceRaw: c.paceRaw,
       godLog: c.godLog, showWhisper: c.showWhisper, autoIdentity: c.autoIdentity,
@@ -1960,6 +1962,15 @@ function loadCfg() {
     $('allowNoKey').checked = !!c.allowNoKey;
     if (c.speechLen) $('speechLen').value = c.speechLen;
     if (c.paceRaw) $('pace').value = c.paceRaw;
+    // 默认值升级（v2：温度 0.6、并发 6、节奏「较快」）。旧存档里那几个数是旧默认，
+    // 一次性覆盖成新默认，之后用户自己改的值照常保留。
+    if ((c.v || 1) < 2) {
+      $('temp').value = '0.6';
+      $('conc').value = '6';
+      $('pace').value = '430';
+      c.v = 2;
+      setTimeout(saveCfg, 0);
+    }
     if (c.godLog != null) $('godLog').checked = !!c.godLog;
     if (c.showWhisper != null && $('showWhisper')) $('showWhisper').checked = !!c.showWhisper;
     if (c.autoIdentity != null && $('autoIdentity')) $('autoIdentity').checked = !!c.autoIdentity;
@@ -2332,9 +2343,14 @@ function voiceProfileFor(persona, style, seat) {
 
 /* 一局开始前把声音分给每个人：按性别挑音色，同一音色最多演 4 个人，
    靠音高语速错开；旁白单独用最稳的男声，压得更低。 */
-function buildVoiceCast() {
+async function buildVoiceCast() {
   if (!S || !S.seats || typeof TTS === 'undefined' || !TTS.listVoices) return null;
-  const list = TTS.listVoices() || [];
+  let list = TTS.listVoices() || [];
+  // 音色列表是异步加载的，开局这一刻可能还没就绪，给一次重试
+  if (!list.length) {
+    await sleep(1500);
+    list = TTS.listVoices() || [];
+  }
   if (!list.length) return null;
 
   const used = {};
@@ -4213,7 +4229,9 @@ const TTS = (() => {
   /* 找中文音色列表：第一个给角色发言，第二个（若有）给旁白 */
   function zhVoiceList() {
     if (!window.speechSynthesis) return [];
-    if (voiceCache) return voiceCache;
+    // 注意：空数组不能当缓存用。音色是异步加载的，页面刚加载时 getVoices() 常为空，
+    // 一旦把空结果缓存下来，之后所有角色都会退回同一个默认音色（听起来全是 AI 味）。
+    if (voiceCache && voiceCache.length) return voiceCache;
     const pick = () => {
       const vs = window.speechSynthesis.getVoices() || [];
       const zh = vs.filter(v => {
@@ -4225,14 +4243,15 @@ const TTS = (() => {
         if (/^zh[-_]hk/.test(lang) || /粤|cantonese|hong ?kong/i.test(name)) return false;
         return true;
       });
-      // 普通话优先，其次台湾国语，最后其他
-      const rank = v => {
+      // 排序：普通话优先，且同区域里「在线神经网络音色」必须排在本机机械音色前面
+      // （Huihui/Kangkang/Yaoyao 那类 local 音色就是"一股 AI 味"的来源）
+      const score = v => {
         const l = String(v.lang || '').toLowerCase();
-        if (/^zh[-_]cn/.test(l)) return 0;
-        if (/^zh[-_]tw/.test(l)) return 1;
-        return 2;
+        const region = /^zh[-_]cn/.test(l) ? 0 : /^zh[-_]tw/.test(l) ? 1 : 2;
+        const local = v.localService ? 1 : 0;
+        return region * 2 + local;
       };
-      return zh.sort((a, b) => rank(a) - rank(b));
+      return zh.sort((a, b) => score(a) - score(b));
     };
     voiceCache = pick();
     if (!voiceCache.length && !voicesHooked && window.speechSynthesis.addEventListener) {
@@ -4328,7 +4347,7 @@ const TTS = (() => {
         utter = new SpeechSynthesisUtterance(text);
         utter.rate = o.rate || rate;
         utter.pitch = o.pitch != null ? o.pitch : pitch;
-        utter.volume = 1;
+        utter.volume = o.volume != null ? o.volume : 1;   // 耳语时压低音量
         utter.lang = 'zh-CN';
         const list = zhVoiceList();
         let v = null;
@@ -4487,6 +4506,25 @@ const TTS = (() => {
         if (typeof FAST !== 'undefined' && FAST) break;
         await sleep(180);
       }
+    },
+    /* 耳语：压低音量、稍快、音调略低，像凑在耳边说话，用在狼人夜聊 */
+    whisper(text, name, voice) {
+      if (!enabled || ttsMode === 'key') return false;
+      if (typeof FAST !== 'undefined' && FAST) return false;
+      const v = voice || {};
+      const body = clean(text);
+      if (!body) return false;
+      const mySeq = ++seq;
+      silence();
+      const opts = {
+        rate: rate * (v.rate || 1) * 1.08,
+        pitch: (v.pitch != null ? v.pitch : 1) * 0.9,
+        volume: 0.32,
+        voiceName: v.name || '',
+        prof: { name: v.kind || '温柔' }
+      };
+      if (canNative()) return talkNative(body, opts, mySeq);
+      return talkOnline(body, opts, mySeq);
     },
     /* prof：该角色的声纹（pitch/rate/音色），让每个人说话不像同一个人 */
     speech(text, name, voice) {
@@ -4952,6 +4990,12 @@ async function nightPhase(id) {
       lines.push(w.name + '（' + w.seat + ' 号）：' + ans);
       godMsg('夜聊 · ' + w.name + '：' + ans, '🐺');
       packMsg('夜聊 · ' + w.name + '：' + ans, '🐺');
+      /* 夜聊也念出来，但是耳语：音量压到三成、音调略低、语速稍快。
+         顺序播报，等这只狼说完再轮下一只，才有偷偷商量事的感觉。 */
+      if (TTS.enabled && !isMe(w)) {
+        TTS.whisper(ans, w.name, w.voice);
+        await TTS.waitDone(9000);
+      }
       await beat(Math.max(80, paceMs() / 3));
     }
     S.speaking = null; renderSeats();
@@ -5740,7 +5784,7 @@ async function startGame() {
     if (CFG.autoIdentity) {
       msgEvent('🪞', '牌桌上的人开始互相打量，各自报上名字和来历。');
       await genIdentities(id);
-      buildVoiceCast();   // 人设齐了，按性别和性格把 12 个声音分下去
+      await buildVoiceCast();   // 人设齐了，按性别和性格把 12 个声音分下去
     }
     /* 参与模式：先把底牌摊给玩家看 */
     if (MODE === 'play') {
