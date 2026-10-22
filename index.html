@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AI 狼人杀 · 对战台</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🐺</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%230c1018'/><path d='M9 2.6 5.6 9.6 3.8 12.6 7.6 13.8 5 17 9 17.6 10.8 21.2 16 25.8 21.2 21.2 23 17.6 27 17 24.4 13.8 28.2 12.6 26.4 9.6 23 2.6 19 9 13 9Z' fill='%23d9a94b'/><path d='M13.2 16.6 18.8 16.6 18.2 21.4 16 24 13.8 21.4Z' fill='%238a5a25'/><path d='M10.2 12.4 14.4 14.2 13.6 16.9 10 15.1Z' fill='%23e0452c'/><path d='M21.8 12.4 17.6 14.2 18.4 16.9 22 15.1Z' fill='%23e0452c'/><path d='M14.2 20.2 15.1 20.2 14.7 22.5Z M16.9 20.2 17.8 20.2 17.3 22.5Z' fill='%23f7f2e7'/></svg>">
 <style>
 :root{
   --ink-900:#05070b;
@@ -85,14 +85,17 @@ body.is-day .topbar::after{
 }
 .brand{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .brand-mark{
-  width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:15px;
-  background:radial-gradient(circle at 50% 30%,rgba(125,167,224,.2),transparent 72%);
-  border:1px solid rgba(125,167,224,.2);
+  width:30px;height:30px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;
+  background:radial-gradient(circle at 50% 30%,rgba(206,66,44,.26),rgba(12,16,23,.55) 74%);
+  border:1px solid rgba(217,169,75,.34);
+  box-shadow:0 0 12px rgba(206,66,44,.18),inset 0 0 10px rgba(0,0,0,.45);
   transition:.9s var(--ease);
 }
+.brand-mark svg{width:21px;height:21px;display:block}
 body.is-day .brand-mark{
-  background:radial-gradient(circle at 50% 30%,rgba(217,169,75,.22),transparent 72%);
-  border-color:rgba(217,169,75,.22);
+  background:radial-gradient(circle at 50% 30%,rgba(217,169,75,.26),rgba(20,24,32,.42) 74%);
+  border-color:rgba(217,169,75,.42);
+  box-shadow:0 0 12px rgba(217,169,75,.16),inset 0 0 10px rgba(0,0,0,.28);
 }
 .brand-name{font-family:var(--serif);font-size:15.5px;font-weight:600;letter-spacing:.14em}
 .stageinfo{display:flex;align-items:center;gap:12px;flex:1;min-width:0;font-size:13px;color:var(--text-3);overflow:hidden}
@@ -1175,7 +1178,38 @@ body.player-view .whisper{display:none!important}
 
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">🐺</span>
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="wwFur" x1="16" y1="2" x2="16" y2="27" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#F6D493"/>
+            <stop offset=".48" stop-color="#D9A94B"/>
+            <stop offset="1" stop-color="#87531F"/>
+          </linearGradient>
+          <linearGradient id="wwMuz" x1="16" y1="17" x2="16" y2="25" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#B8802F"/>
+            <stop offset="1" stop-color="#77441A"/>
+          </linearGradient>
+          <linearGradient id="wwEye" x1="16" y1="12" x2="16" y2="17" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#FF9A6B"/>
+            <stop offset="1" stop-color="#A81E15"/>
+          </linearGradient>
+        </defs>
+        <path d="M9.0 2.6 5.6 9.6 3.8 12.6 7.6 13.8 5.0 17.0 9.0 17.6 10.8 21.2 16 25.8 21.2 21.2 23.0 17.6 27.0 17.0 24.4 13.8 28.2 12.6 26.4 9.6 23.0 2.6 19.0 9.0 13.0 9.0Z" fill="url(#wwFur)"/>
+        <path d="M9.7 5.6 7.4 9.4 11.9 9.2Z" fill="#5C340F" opacity=".55"/>
+        <path d="M22.3 5.6 24.6 9.4 20.1 9.2Z" fill="#5C340F" opacity=".55"/>
+        <path d="M13.2 16.6 18.8 16.6 18.2 21.4 16 24.0 13.8 21.4Z" fill="url(#wwMuz)"/>
+        <path d="M9.4 11.6 14.8 13.4 14.2 14.6 9.2 13.2Z" fill="#2A1A06" opacity=".38"/>
+        <path d="M22.6 11.6 17.2 13.4 17.8 14.6 22.8 13.2Z" fill="#2A1A06" opacity=".38"/>
+        <path d="M15.3 11.2 16.7 11.2 16 14.8Z" fill="#2A1A06" opacity=".5"/>
+        <path d="M10.2 12.4 14.4 14.2 13.6 16.9 10.0 15.1Z" fill="url(#wwEye)"/>
+        <path d="M21.8 12.4 17.6 14.2 18.4 16.9 22.0 15.1Z" fill="url(#wwEye)"/>
+        <path d="M14.7 20.2 17.3 20.2 16 21.9Z" fill="#1C1108"/>
+        <path d="M14.2 20.2 15.1 20.2 14.7 22.5Z" fill="#F7F2E7"/>
+        <path d="M16.9 20.2 17.8 20.2 17.3 22.5Z" fill="#F7F2E7"/>
+        <path d="M15.2 22.6 16.8 22.6 16 23.9Z" fill="#170E06"/>
+      </svg>
+    </span>
     <span class="brand-name">AI 狼人杀</span>
   </div>
   <div class="stageinfo">
@@ -2610,11 +2644,8 @@ async function lastWords(p, id, reason) {
       if (txt) S.log.push({ round: S.round, kind: 'lastword', seat: p.seat, name: p.name, text: txt });
     } else {
       const raw = await callLLM({
-        system: sysPrompt(p),
-        user: publicState() +
-              '\n\n【遗言】你' + reason + '出局。这是你在牌桌上最后一段话，一到三句：' +
-              '可以指认最可疑的人、可以亮明身份、也可以给活着的人留句话。' +
-              '不要写心声，不要写格式标签，直接说。',
+        system: sysPrompt(p, { task: 'lastword' }),
+        user: publicState() + '\n\n【遗言】你' + reason + '出局，留最后一到三句话。',
         runId: id,
         maxTokens: 320,
         spec: p.spec
@@ -2788,8 +2819,93 @@ const LEN_SPEC = {
   long:   '8 到 12 句'
 };
 
+/* ------------------------------------------------------------
+   提示词：人格与规则（所有回合共用）+ 输出契约（按任务分开给）
+
+   原来一套 system 提示同时服务「白天发言」和「只回一个座位号」，
+   字数、口吻、发言格式会和任务要求互相打架，模型一犹豫就开始解释，
+   于是又得靠元叙述过滤去兜。现在机器作答的回合不再提字数和口吻。
+   ------------------------------------------------------------ */
+const TASK_KIND = {
+  speak: 'text', lastword: 'text', chat: 'text',
+  vote: 'num', kill: 'num', check: 'num', guard: 'num', shoot: 'num',
+  witch: 'enum'
+};
+
+function outputContract(task, wolf) {
+  const len = LEN_SPEC[CFG.speechLen] || LEN_SPEC.normal;
+  switch (task) {
+    case 'speak':
+      return [
+        '【本回合输出】',
+        '轮到你白天发言。严格只输出两段，不要多写别的：',
+        '【心声】不超过 18 字，写你此刻真实的盘算。观众看得到，桌上其他人看不到。' +
+          (wolf ? '可以暴露你真实的算计。' : '可以不体面，也可以怂。'),
+        '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。' +
+          (wolf ? '这一段必须把自己说成好人。' : '')
+      ];
+    case 'lastword':
+      return [
+        '【本回合输出】',
+        '你刚出局，说最后一到三句话：可以指认最可疑的人、可以亮明身份、也可以给活着的人留句话。',
+        '只写你要说的话本身，不要写【心声】，不要加任何标签。'
+      ];
+    case 'chat':
+      return [
+        '【本回合输出】',
+        '你在狼队夜聊里说一句给队友听的话，不超过 40 字，讲清你想刀谁和为什么。',
+        '不要加标签，不要解释格式。'
+      ];
+    case 'vote':
+      return [
+        '【本回合输出】',
+        '本回合你只需要投票，不用说话。',
+        '只输出一个数字：你要放逐的人的座位号，例如 7。',
+        '不要写名字、不要写理由、不要加标点或任何别的字。'
+      ];
+    case 'kill':
+      return [
+        '【本回合输出】',
+        '本回合你只需要定刀，不用说话。',
+        '只输出一个数字：今晚要刀的座位号，例如 7。',
+        '不要写名字、不要写理由、不要加标点或任何别的字。'
+      ];
+    case 'check':
+      return [
+        '【本回合输出】',
+        '本回合你只需要决定查验谁，不用说话。',
+        '只输出一个数字：要验的座位号，例如 7。不要写理由。'
+      ];
+    case 'guard':
+      return [
+        '【本回合输出】',
+        '本回合你只需要决定守谁，不用说话。',
+        '只输出一个数字：要守的座位号，例如 7。不要写理由。'
+      ];
+    case 'shoot':
+      return [
+        '【本回合输出】',
+        '本回合你只需要决定带谁一起走，不用说话。',
+        '只输出一个数字：要带走的座位号，例如 7；不想开枪就输出 0。',
+        '不要写名字、不要写理由。'
+      ];
+    case 'witch':
+      return [
+        '【本回合输出】',
+        '本回合你只需要决定用哪瓶药，不用说话。只输出下面三种之一，不要多一个字：',
+        '救',
+        '毒 5',
+        '过'
+      ];
+    default:
+      return [];
+  }
+}
+
 function sysPrompt(p, opts) {
   const o = opts || {};
+  const task = TASK_KIND[o.task] ? o.task : 'speak';
+  const kind = TASK_KIND[task];
   const meta = ROLE_META[p.role];
   const wolf = isWolfRole(p.role);
   const goal = wolf
@@ -2799,6 +2915,7 @@ function sysPrompt(p, opts) {
   const lines = [
     '你在进行一场多人狼人杀对局，扮演下面这个玩家。你不是助手，不是 AI，你就是这个人。',
     '',
+    '【你是谁】',
     '座位：' + p.seat + ' 号',
     '名字：' + p.name,
     '身份：' + meta.name + '（' + (wolf ? '狼人阵营' : '好人阵营') + '）'
@@ -2810,24 +2927,34 @@ function sysPrompt(p, opts) {
 
   lines.push(
     '',
-    '规则摘要',
-    '夜晚狼人刀人，预言家验人，女巫用药，守卫护人。白天按顺序发言，然后全体投票放逐一人。',
-    '出局玩家的身份不公开。',
-    wolf
-      ? '狼人杀光全部神职或全部平民即获胜；好人放逐全部狼人即获胜。'
-      : '好人放逐全部狼人即获胜；狼人杀光全部神职或全部平民即获胜。',
-    '你的目标：' + goal,
-    '',
-    '表达要求',
-    '用第一人称中文口语说话，像真人坐在牌桌上，带着你这个人的脾气和习惯。',
-    '【重要】最终输出必须是简体中文，一个英文单词都不能有。即使你用其他语言思考，最终说出来的话也必须全是中文。',
-    '【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。不要说"我应该"、"注意要求"、"格式是"、"所以我要"这类话。把思考放在心里，只说最终要说的内容。',
-    '不要出现元叙述，例如提到自己是 AI、模型、提示词或设定。',
-    '不要使用标题、编号列表、括号补充。',
-    '提到其他人时用座位号加名字，例如 3 号苏晚。',
-    '发言要有立场：给出你的判断、依据，以及你现在最怀疑谁，不要只复述别人说过的话。',
-    '你只知道身份允许你知道的信息，不得编造没有发生的事件。'
+    '【规则】',
+    '· 夜里狼人先商量再统一刀人，预言家验一人，女巫选一瓶药，守卫护一人。',
+    '· 白天存活的人依次发言，然后全体投票放逐一人；平票的人再各说一句重新投，再平票就没人出局。',
+    '· 出局不公布身份。退场的人不能再发言，也不能再投票。',
+    '· 被毒杀的人不留遗言，也不能开枪。',
+    '· 女巫的解药和毒药各一次，同一夜只能用一瓶。守卫不能连续两晚守同一个人。',
+    '· 猎人、狼王出局时可以开枪带走一人；被枪带走的猎人还能再开一枪。',
+    '· ' + ((typeof S !== 'undefined' && S && S.winMode === 'parity')
+      ? '狼人只要杀到存活人数与狼数持平就获胜，好人放逐全部狼人获胜。'
+      : '狼人杀光全部神职或全部平民即获胜，好人放逐全部狼人获胜。'),
+    '· 你只知道你身份允许你知道的信息，不许编造没发生过的事。',
+    '· 你的目标：' + goal
   );
+
+  /* 只有真的要说话，才谈口吻和表达 */
+  if (kind === 'text') {
+    lines.push(
+      '',
+      '【怎么说话】',
+      '用第一人称中文口语，像真人坐在牌桌上，带着你这个人的脾气和习惯。',
+      '全程简体中文，一个英文单词都不要出现。',
+      '只输出你要说的话本身：不要写思考过程，不要解释你为什么这么说，不要提格式、要求、字数。',
+      '不要用标题、编号列表、括号补充。',
+      '提到别人用「座位号 + 名字」，例如 3 号苏晚。',
+      '要有立场：给出判断、依据，以及你现在最怀疑谁，不要只复读别人说过的话。',
+      '可以有情绪、可以反问、可以示弱。'
+    );
+  }
 
   /* 硬核模式：AI 知道桌上有个真人，并且重点针对他 */
   if (MODE === 'play' && S && diffOf().aiKnows) {
@@ -2843,17 +2970,8 @@ function sysPrompt(p, opts) {
     }
   }
 
-  if (o.whisper) {
-    lines.push(
-      '',
-      '输出格式（必须严格照做，只输出这两段，不要加别的）',
-      '【心声】一句不超过 18 字，写你此刻真实的想法' + (wolf ? '，可以暴露你的真实盘算。' : '，可以不体面、也可以怂。'),
-      '【发言】你在牌桌上的正式发言，' + (wolf ? '这一段所有人都会听到，必须伪装成好人。' : '这一段所有人都会听到。'),
-      '两段合起来字数控制在' + (LEN_SPEC[CFG.speechLen] || LEN_SPEC.normal) + '。'
-    );
-  } else {
-    lines.push('字数控制在' + (LEN_SPEC[CFG.speechLen] || LEN_SPEC.normal) + '。');
-  }
+  const out = outputContract(task, wolf);
+  if (out.length) lines.push('', ...out);
 
   return lines.join('\n');
 }
@@ -2929,6 +3047,29 @@ function parseSeat(text, allowed) {
     if (allowed.includes(s.seat) && t.includes(s.name)) return s.seat;
   }
   return null;
+}
+
+/* 让模型挑一个座位号。解析不出来就再逼一次，实在不行才交给调用方兜底。
+   不这么做的话，狼刀和放逐会因为模型多说了一句话就直接变成随机。 */
+async function chooseSeat(p, runId, body, cands, spec, task) {
+  const allowed = cands.map(c => (typeof c === 'number' ? c : c.seat));
+  if (!allowed.length) return null;
+  const askOnce = txt => callLLM({
+    system: sysPrompt(p, { task: task || 'kill' }),
+    user: txt,
+    runId: runId,
+    maxTokens: 64,
+    spec: spec
+  });
+
+  let seat = parseSeat(await askOnce(body), allowed);
+  if (seat != null) return seat;
+
+  const retry = body +
+    '\n\n【重来】上一次没有给出有效的座位号。这次只输出一个数字，从 ' +
+    allowed.join('、') + ' 里选一个，不要写任何别的内容。';
+  seat = parseSeat(await askOnce(retry), allowed);
+  return seat;
 }
 
 function topSeat(map) {
@@ -3942,15 +4083,9 @@ async function nightPhase(id) {
         title: '你今晚要刀谁', tip: '狼队只剩你了，你说了算', cands: killPool
       });
     } else {
-      const ans = await callLLM({
-        system: sysPrompt(w),
-        user: '【狼人行动】\n今晚由你独自出手。\n可刀的对象：' + candText +
-              '\n\n只回复一个座位号数字，不要解释。',
-        runId: id,
-        maxTokens: 64,
-        spec: w.spec
-      });
-      chosen = parseSeat(ans, candSeats);
+      chosen = await chooseSeat(w, id,
+        '【狼人行动】\n今晚由你独自出手。\n可刀的对象：' + candText,
+        candSeats, w.spec, 'kill');
     }
     killSeat = chosen ?? pick(candSeats);
     godMsg('狼人 ' + w.name + ' 单独决定刀 ' + nameOf(killSeat), '🐺');
@@ -3971,7 +4106,7 @@ async function nightPhase(id) {
         if (!ans) ans = '（没吭声）';
       } else {
         ans = await callLLM({
-          system: sysPrompt(w),
+          system: sysPrompt(w, { task: 'chat' }),
           user: '【狼人夜聊】\n你的狼队友：' + mates +
                 '\n可刀的对象：' + candText +
                 '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
@@ -3996,16 +4131,9 @@ async function nightPhase(id) {
 
     const picked = await pool(wolvesAlive.filter(w => !isMe(w)), CFG.conc, async w => {
       await gate(id);
-      const ans = await callLLM({
-        system: sysPrompt(w),
-        user: '【狼人定刀】\n夜聊记录：\n' + lines.join('\n') +
-              '\n\n可刀的对象：' + candText +
-              '\n\n从上面的人里选一个。只回复座位号数字。',
-        runId: id,
-        maxTokens: 64,
-        spec: w.spec
-      });
-      return parseSeat(ans, candSeats);
+      return await chooseSeat(w, id,
+        '【狼人定刀】\n夜聊记录：\n' + lines.join('\n') + '\n\n可刀的对象：' + candText,
+        candSeats, w.spec, 'kill');
     });
     if (wolvesAlive.some(isMe)) picked.push(myKill);
 
@@ -4037,15 +4165,9 @@ async function nightPhase(id) {
       if (isMe(seer)) {
         target = await askHumanSafe(id, 'pick', { title: '你要验谁', tip: '结果只有你自己知道', cands });
       } else {
-        const ans = await callLLM({
-          system: sysPrompt(seer),
-          user: '【预言家验人】\n可验的对象：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
-                '\n\n只回复一个座位号数字。',
-          runId: id,
-          maxTokens: 64,
-          spec: seer.spec
-        });
-        target = parseSeat(ans, cands.map(s => s.seat));
+        target = await chooseSeat(seer, id,
+          '【预言家验人】\n可验的对象：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、'),
+          cands, seer.spec, 'check');
       }
       if (target == null) target = pick(cands).seat;
       const t = seatOf(target);
@@ -4083,17 +4205,11 @@ async function nightPhase(id) {
           title: '今晚守谁', tip: guard.guardLast ? '上一夜守的是 ' + guard.guardLast + ' 号，今晚不能重复' : '不能连着守同一个人', cands
         });
       } else {
-        const ans = await callLLM({
-          system: sysPrompt(guard),
-          user: '【守卫行动】\n今晚可以守护的对象：' +
-                cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
-                (guard.guardLast ? '\n上一夜你守的是 ' + guard.guardLast + ' 号，今晚不能重复。' : '') +
-                '\n\n只回复一个座位号数字。',
-          runId: id,
-          maxTokens: 64,
-          spec: guard.spec
-        });
-        t = parseSeat(ans, cands.map(s => s.seat));
+        t = await chooseSeat(guard, id,
+          '【守卫行动】\n今晚可以守护的对象：' +
+            cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
+            (guard.guardLast ? '\n上一夜你守的是 ' + guard.guardLast + ' 号，今晚不能重复。' : ''),
+          cands, guard.spec, 'guard');
       }
       if (t == null) t = pick(cands).seat;
       guardSeat = t;
@@ -4133,7 +4249,7 @@ async function nightPhase(id) {
       note = saved ? '用解药' : poisonSeat != null ? '毒 ' + nameOf(poisonSeat) : '不用药';
     } else {
       const ans = await callLLM({
-        system: sysPrompt(witch),
+        system: sysPrompt(witch, { task: 'witch' }),
         user: [
           '【女巫行动】',
           '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。',
@@ -4252,7 +4368,7 @@ async function shoot(p, reason, id) {
       });
     } else {
       const ans = await callLLM({
-        system: sysPrompt(p),
+        system: sysPrompt(p, { task: 'shoot' }),
         user: [
           '【' + (isKing ? '狼王' : '猎人') + '技能】',
           '你' + reason + '出局，可以带走一名存活玩家。',
@@ -4339,10 +4455,10 @@ async function dayPhase(id) {
       parts.push('【提示】你昨晚是狼人袭击的目标。');
     }
     parts.push('【你之前的发言与投票】\n' + memText(p));
-    parts.push('输出两段，严格按下面的格式，不要多写：');
-    parts.push('【心声】一句不超过 18 字的真实想法，可以说谎也可以示弱');
-    parts.push('【发言】你在牌桌上的正式发言，结合公开信息给出判断与怀疑对象');
-    parts.push('【重要】不要输出思考过程、不要分析自己该怎么说、不要提到"作为XX身份"。直接输出【心声】和【发言】两段。');
+    parts.push('输出两段，严格按格式，不要多写：');
+    parts.push('【心声】一句不超过 18 字的真实想法');
+    parts.push('【发言】你这一轮的正式发言，结合公开信息给出判断和最怀疑的人');
+    parts.push('直接输出这两段，不要写思考过程，不要提"作为XX身份"。');
 
     try {
       let parts2;
@@ -4354,7 +4470,7 @@ async function dayPhase(id) {
         parts2 = txt ? { body: txt, whisper: '' } : { body: '（想了一下，这轮没说话）', whisper: '' };
       } else {
         const raw = await callLLM({
-          system: sysPrompt(p, { whisper: true }),
+          system: sysPrompt(p, { task: 'speak' }),
           user: parts.join('\n\n'),
           runId: id,
           maxTokens: CFG.speechLen === 'long' ? 1200 : CFG.speechLen === 'short' ? 460 : 780,
@@ -4410,7 +4526,7 @@ async function dayPhase(id) {
           body.set(txt || '（沉默，没有辩护）');
         } else {
           const text = await callLLM({
-            system: sysPrompt(p, { whisper: true }),
+            system: sysPrompt(p, { task: 'speak' }),
             user: publicState() +
                   '\n\n你和 ' + pkSeats.filter(x => x !== seatNum).map(nameOf).join('、') +
                   ' 票数相同，进入 PK。\n只有一轮机会，说 2 句为自己辩护，并指出对手的问题。',
@@ -4512,23 +4628,14 @@ async function runVote(id, restrict) {
     const allowed = cands.filter(s => s.seat !== p.seat).map(s => s.seat);
     if (!allowed.length) return null;
     try {
-      const ans = await callLLM({
-        system: sysPrompt(p),
-        user: [
+      const to = await chooseSeat(p, id, [
           '【投票阶段】',
           publicState(),
           privateInfo(p) ? '【只有你知道】\n' + privateInfo(p) : '',
           '【你之前的发言与投票】\n' + memText(p),
           '从下列玩家中选一个放逐：' + cands.filter(s => s.seat !== p.seat)
-            .map(s => s.seat + ' 号 ' + s.name).join('、'),
-          '',
-          '只回复一个座位号数字，不要解释。'
-        ].filter(Boolean).join('\n\n'),
-        runId: id,
-        maxTokens: 64,
-        spec: p.spec
-      });
-      const to = parseSeat(ans, allowed);
+            .map(s => s.seat + ' 号 ' + s.name).join('、')
+        ].filter(Boolean).join('\n\n'), allowed, p.spec, 'vote');
       return { from: p.seat, to };
     } catch (e) {
       if (e instanceof StopGame) throw e;
