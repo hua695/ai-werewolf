@@ -1225,6 +1225,158 @@ body.player-view .whisper{display:none!important}
 }
 .roster-item.me svg{box-shadow:0 0 0 2px rgba(217,169,75,.45)}
 
+/* ══════════ 圆桌（桌面宽屏）══════════
+   桌面端把三栏压成两栏：stage 内部自己分左右——左边 264px 放发言记录，
+   右边是一张圆桌，12 个座位绕圈，发言气泡落进内圈。 */
+.round-table{display:none}
+
+@media (min-width:1181px){
+  .app{grid-template-columns:minmax(0,1fr) 340px}
+  .panel.left{display:none}
+
+  .stage{position:relative}
+  .feed{
+    position:absolute;left:0;top:0;bottom:42px;width:264px;
+    padding:13px 11px 12px;
+    border-right:1px solid var(--line);background:var(--ink-850);z-index:3;
+  }
+  .feed-inner{max-width:none}
+  .statusbar{position:absolute;left:0;right:0;bottom:0;z-index:5}
+  .round-table{
+    display:block;position:absolute;left:264px;right:0;top:0;bottom:42px;z-index:2;
+    overflow:hidden;
+  }
+  /* 开局前：回到单栏，首页大标题占中间 */
+  .stage.idle .feed{position:relative;left:auto;top:auto;bottom:auto;width:auto;
+    border-right:none;background:none;z-index:1}
+.stage.idle .round-table{display:none}
+.stage.idle .feed-inner{max-width:740px;margin:0 auto}
+/* 首页大标题在舞台里居中，不跟着记录栏挤在左侧 */
+.stage > .hero{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;
+  padding:40px 24px;z-index:4;pointer-events:none;
+}
+
+  /* 记录栏里的消息卡收窄：头像小一点、字号降一档 */
+  .feed .msg.speech .s-head img.ava{width:20px !important;height:20px !important}
+  .feed .msg.speech .s-head{gap:6px;margin-bottom:6px}
+  .feed .msg.speech .s-seat{width:17px;height:17px;font-size:9.5px}
+  .feed .msg.speech .s-name{font-size:12px}
+  .feed .msg.speech .s-tag{font-size:9px;letter-spacing:.1em}
+  .feed .msg.speech .s-body{font-size:12.4px;line-height:1.72}
+  .feed .msg.speech{padding:8px 10px;border-radius:9px}
+  .feed .msg{margin-bottom:10px}
+  .feed .msg.phase .p-main{font-size:15px;letter-spacing:.18em}
+  .feed .msg.phase{margin:18px 0}
+  .feed .msg.event{font-size:11.5px}
+  .feed .msg .b-title{font-size:17px}
+}
+
+/* 圆桌本体：只做一层很淡的罩和一圈细边，让底下的牌桌透出来，别糊成一个黑盘子 */
+.rt-wrap{position:absolute;inset:0;display:grid;place-items:center;padding:10px}
+.rt-table{
+  position:relative;width:100%;max-width:700px;aspect-ratio:1.06;
+  border-radius:50%;
+  background:
+    radial-gradient(58% 54% at 50% 44%,rgba(20,27,36,.5),rgba(10,15,21,.28) 66%,rgba(9,13,19,0) 80%);
+  border:1px solid rgba(217,169,75,.32);
+  box-shadow:inset 0 0 0 6px rgba(217,169,75,.035),inset 0 0 90px rgba(0,0,0,.5),0 0 60px rgba(217,169,75,.06);
+  transition:background .3s;
+}
+.rt-table.has-bubble{background:
+  radial-gradient(62% 58% at 50% 44%,rgba(10,14,20,.78),rgba(8,11,17,.5) 68%,rgba(9,13,19,.1) 82%)}
+.rt-center{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;z-index:1;
+  transition:opacity .3s;
+}
+.rt-table.has-bubble .rt-center{opacity:0}
+.rt-center b{
+  display:block;font-family:var(--serif);font-size:19px;letter-spacing:.16em;
+  color:var(--gold);font-weight:700;
+}
+.rt-center span{display:block;margin-top:4px;font-size:11.5px;color:var(--text-3);letter-spacing:.1em}
+
+.rt-seat{
+  position:absolute;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  cursor:pointer;z-index:2;
+}
+.rt-ava{
+  position:relative;width:54px;height:54px;border-radius:50%;
+  box-shadow:0 0 0 1.5px rgba(255,255,255,.12),0 6px 16px rgba(0,0,0,.4);
+  transition:box-shadow .25s,transform .25s,filter .25s;
+}
+.rt-ava img{border-radius:50%;display:block}
+.rt-no{
+  position:absolute;right:-2px;top:-2px;min-width:17px;height:17px;padding:0 3px;
+  border-radius:9px;background:rgba(10,13,19,.92);
+  border:1px solid rgba(217,169,75,.4);
+  color:var(--gold);font-size:10px;font-weight:700;line-height:15px;text-align:center;
+  font-variant-numeric:tabular-nums;
+}
+.rt-name{
+  font-size:11.5px;color:var(--text-2);letter-spacing:.02em;white-space:nowrap;
+  max-width:74px;overflow:hidden;text-overflow:ellipsis;
+}
+.rt-seat.speaking .rt-ava{
+  box-shadow:0 0 0 2.5px var(--gold),0 0 22px rgba(217,169,75,.45);
+  transform:translateY(-4px) scale(1.06);
+}
+.rt-seat.speaking .rt-name{color:var(--gold)}
+.rt-seat.dead .rt-ava{filter:grayscale(1) brightness(.6)}
+.rt-seat.dead .rt-name{color:var(--text-3);text-decoration:line-through}
+.rt-seat.dead::after{
+  content:'';position:absolute;left:50%;top:27px;width:52px;height:1.5px;
+  background:rgba(207,68,51,.75);transform:translate(-50%,-50%) rotate(-38deg);
+}
+.rt-seat.me .rt-ava{box-shadow:0 0 0 2px rgba(125,167,224,.55),0 6px 16px rgba(0,0,0,.4)}
+
+/* 发言气泡：落内圈，细线连到说话的人 */
+.rt-bubble{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-46%);
+  width:min(76%,340px);min-height:92px;max-height:60%;
+  display:flex;flex-direction:column;
+  padding:11px 14px;border-radius:13px;z-index:3;
+  background:rgba(11,15,22,.94);
+  border:1px solid rgba(217,169,75,.34);
+  box-shadow:0 14px 46px rgba(0,0,0,.5);
+  animation:rtBubble .3s var(--ease);
+}
+@keyframes rtBubble{from{opacity:0;transform:translate(-50%,-42%) scale(.96)}to{opacity:1;transform:translate(-50%,-46%) scale(1)}}
+.rt-bubble .rb-head{
+  display:flex;align-items:center;gap:7px;padding-bottom:6px;margin-bottom:6px;
+  border-bottom:1px solid rgba(217,169,75,.16);font-size:11px;color:var(--gold);
+}
+.rt-bubble .rb-head b{font-weight:700;letter-spacing:.04em}
+.rt-bubble .rb-tag{margin-left:auto;font-size:9.5px;color:var(--text-3);letter-spacing:.14em}
+.rt-bubble .rb-body{
+  font-size:13px;line-height:1.78;color:#dfe5ef;overflow-y:auto;
+  white-space:pre-wrap;word-break:break-word;
+}
+.rt-bubble.whisper{background:rgba(24,14,17,.95);border-color:rgba(207,68,51,.4)}
+.rt-bubble.whisper .rb-head{color:#e0846f;border-bottom-color:rgba(207,68,51,.24)}
+.rt-bubble.whisper .rb-body{font-size:12.2px;color:#efd6cf}
+
+/* 白天主题：圆桌用暖白薄纱，名字转深色，气泡仍是深卡托着浅字 */
+body.is-day .rt-table{
+  background:radial-gradient(58% 54% at 50% 44%,rgba(255,249,238,.3),rgba(250,240,224,.14) 66%,rgba(250,240,224,0) 80%);
+  border-color:rgba(157,116,42,.3);
+  box-shadow:inset 0 0 0 6px rgba(157,116,42,.05),inset 0 0 90px rgba(140,110,60,.14),0 0 60px rgba(157,116,42,.08);
+}
+body.is-day .rt-table.has-bubble{
+  background:radial-gradient(62% 58% at 50% 44%,rgba(255,249,238,.18),rgba(250,240,224,.1) 70%,rgba(250,240,224,0) 84%);
+}
+body.is-day .rt-center b{color:#9d742a}
+body.is-day .rt-center span{color:#7a694a}
+body.is-day .rt-seat .rt-name{color:#4a3c22}
+body.is-day .rt-seat.speaking .rt-name{color:#8a6410}
+body.is-day .rt-seat.dead .rt-name{color:#9c8f76}
+body.is-day .rt-bubble{background:rgba(30,24,15,.95);border-color:rgba(157,116,42,.45)}
+body.is-day .rt-bubble .rb-head{color:#d8b25c;border-bottom-color:rgba(157,116,42,.28)}
+body.is-day .rt-bubble .rb-body{color:#f2e9d8}
+
 /* ══════════ 净桌模式：收起两侧面板，只留牌桌 ══════════ */
 #hudBtn{display:none}
 @media (min-width:901px){
@@ -1236,6 +1388,11 @@ body.player-view .whisper{display:none!important}
 }
 @media (min-width:901px) and (max-width:1180px){
   body.hud-hide .app{grid-template-columns:minmax(0,1fr) 0px}
+}
+/* 净桌时把记录栏也收走，圆桌占满整个舞台 */
+@media (min-width:1181px){
+  body.hud-hide .feed{display:none}
+  body.hud-hide .round-table{left:0}
 }
 
 /* ══════════ 响应式 ══════════ */
@@ -1432,6 +1589,7 @@ body.player-view .whisper{display:none!important}
     <div class="kill-slash" id="killSlash"></div>
     <div class="fx" id="fx"></div>
     <div class="roster" id="roster"></div>
+    <div class="round-table" id="roundTable"></div>
     <div class="feed" id="feed">
       <div class="feed-inner" id="feedInner">
         <div class="hero" id="hero">
@@ -3572,6 +3730,124 @@ function topSeat(map) {
 }
 
 /* ============================================================
+   圆桌：座位绕圈排，发言气泡落内圈
+   ============================================================ */
+function renderTable() {
+  const box = $('roundTable');
+  if (!box || !S) return;
+  const n = S.seats.length;
+  if (!n) return;
+
+  // 重建前把当前气泡记下来，重建完还原——否则每次刷新座位都会把正在说的话弄没
+  const keepSeat = bubbleSeat;
+  const keepText = bubbleText;
+  const keepTag = bubbleTag;
+
+  const rx = 39;   // 横向半径（百分比）
+  const ry = 41;   // 纵向半径
+  const phaseTxt = S.phase === 'night' ? '夜晚' : S.phase === 'day' ? '白天' : '准备中';
+  const alive = S.seats.filter(s => s.alive).length;
+
+  let html = '<div class="rt-wrap"><div class="rt-table">' +
+    '<div class="rt-center"><b>第 ' + S.round + ' 天</b>' +
+      '<span>' + phaseTxt + ' · 存活 ' + alive + '/' + n + '</span></div>';
+
+  S.seats.forEach((s, i) => {
+    // 1 号在 12 点方向，顺时针排；发言顺序也是顺时针，看着像一圈传话
+    const ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    const x = 50 + Math.cos(ang) * rx;
+    const y = 50 + Math.sin(ang) * ry;
+    const cls = ['rt-seat'];
+    if (!s.alive) cls.push('dead');
+    if (S.speaking === s.seat) cls.push('speaking');
+    if (s.human) cls.push('me');
+    html += '<div class="' + cls.join(' ') + '" data-seat="' + s.seat + '" data-rt="' + s.seat + '"' +
+      ' style="left:' + x.toFixed(2) + '%;top:' + y.toFixed(2) + '%">' +
+      '<div class="rt-ava">' + avatarSVG(s.avatar, 54) +
+        '<span class="rt-no">' + s.seat + '</span></div>' +
+      '<div class="rt-name">' + esc(s.name) + '</div>' +
+    '</div>';
+  });
+
+  html += '</div></div>';
+  box.innerHTML = html;
+  box.querySelectorAll('.rt-seat').forEach(el => {
+    el.addEventListener('click', () => openProfile(Number(el.dataset.seat)));
+  });
+  bubbleEl = null;
+  if (keepSeat != null) {
+    const who = seatOf(keepSeat);
+    if (who) {
+      const b = openBubble(who, keepTag);
+      if (keepText) b.set(keepText);
+    }
+  }
+}
+
+/* 当前气泡属于哪个座位（切人时只更新 class，不重绘整个圆桌） */
+let bubbleSeat = null;
+let bubbleEl = null;
+let bubbleText = '';
+let bubbleTag = '发言';
+
+function paintBubbleSeat() {
+  const box = $('roundTable');
+  if (!box) return;
+  box.querySelectorAll('.rt-seat').forEach(el => {
+    el.classList.toggle('speaking', Number(el.dataset.seat) === bubbleSeat);
+  });
+}
+
+/* 气泡：头顶一个框，落进圆桌内圈，开口一侧用细线连到说话的人 */
+function openBubble(p, tag) {
+  const box = $('roundTable');
+  if (!box || !box.offsetHeight) return { set() {}, close() {} };
+  closeBubble();
+  bubbleSeat = p.seat;
+  bubbleTag = tag || '发言';
+
+  const el = document.createElement('div');
+  el.className = 'rt-bubble' + (/遗言|耳语/.test(tag || '') ? ' whisper' : '');
+  el.innerHTML =
+    '<div class="rb-head"><b>' + p.seat + ' 号 ' + esc(p.name) + '</b>' +
+      '<span class="rb-tag">' + esc(tag || '发言') + '</span></div>' +
+    '<div class="rb-body"><span class="typing"><i></i><i></i><i></i></span></div>';
+  const tbl = box.querySelector('.rt-table');
+  if (tbl) { tbl.appendChild(el); tbl.classList.add('has-bubble'); }
+  bubbleEl = el;
+  paintBubbleSeat();
+
+  const bodyEl = el.querySelector('.rb-body');
+  let typer = null;
+  bubbleText = '';
+
+  return {
+    set(text) {
+      const plain = String(text == null ? '' : text);
+      bubbleText = plain;
+      if (typer) { typer.finish(); typer = null; }
+      if (FAST || REDUCED || plain.length < 20) {
+        bodyEl.textContent = plain;
+        return;
+      }
+      typer = TYPER.run(bodyEl, plain, plain.length > 200 ? 18 : 30);
+    },
+    close() { closeBubble(); }
+  };
+}
+
+function closeBubble() {
+  if (bubbleEl && bubbleEl.parentNode) bubbleEl.parentNode.removeChild(bubbleEl);
+  const tl = document.querySelector('.rt-table');
+  if (tl) tl.classList.remove('has-bubble');
+  bubbleEl = null;
+  bubbleSeat = null;
+  bubbleText = '';
+  const box = $('roundTable');
+  if (box) box.querySelectorAll('.rt-seat.speaking').forEach(el => el.classList.remove('speaking'));
+}
+
+/* ============================================================
    界面：座位 / 消息 / 状态
    ============================================================ */
 function renderSeats() {
@@ -3631,6 +3907,8 @@ function renderSeats() {
       el.addEventListener('click', () => openProfile(Number(el.dataset.profile)));
     });
   }
+
+  renderTable();   // 圆桌跟着座位状态一起刷新（手机端没有这个容器，内部会直接返回）
 }
 
 /* ============================================================
@@ -3732,6 +4010,7 @@ function addNode(cls, html) {
 function msgPhase(title, sub, kind) {
   addNode('msg phase ' + (kind || ''), '<div class="p-main">' + esc(title) + '</div>' +
     (sub ? '<div class="p-sub">' + esc(sub) + '</div>' : ''));
+  closeBubble();   // 阶段切换，上一轮的气泡该收了
   // 昼夜交替交给旁白念，音色和角色发言分开
   if (kind) TTS.narrate(sub ? title + '，' + sub : title);
 }
@@ -3809,6 +4088,7 @@ function msgSpeech(p, tag) {
 
   const bodyEl = node.querySelector('.s-body');
   const whisperEl = node.querySelector('.whisper');
+  const bubble = openBubble(p, tag);   // 圆桌上同步冒一个气泡
   let typer = null;
 
   return {
@@ -3828,6 +4108,8 @@ function msgSpeech(p, tag) {
 
       // 声音先起，打字跟上，两者基本同时结束；自己说的话不用再念给自己听
       if (TTS.enabled && !isMe(p)) TTS.speech(plain, p.name, p.voice);
+
+      bubble.set(plain);   // 圆桌气泡跟记录同步
 
       // 快进、减少动效、文本太短，都不必逐字打
       if (FAST || REDUCED || plain.length < 20) {
@@ -4736,7 +5018,8 @@ function showHero() {
       '<span class="hero-chip">平票 PK</span>' +
     '</div>' +
     '<div class="hero-arrow">先把密钥填进「配置」，点开始，剩下的交给它们 <span>→</span></div>';
-  feedEl().appendChild(wrap);
+  // 桌面端首页要占整个舞台，不能挤在 264px 的记录栏里
+  if (st) st.appendChild(wrap); else feedEl().appendChild(wrap);
 }
 
 /* ============================================================
@@ -6149,6 +6432,9 @@ function resetUI() {
   document.body.classList.remove('is-over');
   const eb = document.getElementById('endBanner');
   if (eb) eb.remove();
+  closeBubble();
+  const rt = $('roundTable');
+  if (rt) rt.innerHTML = '';
   cancelAsk();
   clearCurtain();
   setProgress(0);
