@@ -2887,9 +2887,10 @@ function outputContract(task, wolf) {
     case 'vote':
       return [
         '【本回合输出】',
-        '本回合你只需要投票，不用说话。',
-        '只输出一个数字：你要放逐的人的座位号，例如 7。',
-        '不要写名字、不要写理由、不要加标点或任何别的字。'
+        '本回合你只需要投票，不用长篇发言。',
+        '第一行只输出一个数字：你要放逐的人的座位号，例如 7。',
+        '第二行用一句话（不超过 20 字）说明你投他的理由。这张票的理由是公开的，所有人都能看到。',
+        '不要输出第三行。'
       ];
     case 'kill':
       return [
@@ -2959,8 +2960,8 @@ function sysPrompt(p, opts) {
     '· 夜里狼人先商量再统一刀人，预言家验一人，女巫选一瓶药，守卫护一人。',
     '· 白天存活的人依次发言，然后全体投票放逐一人；平票的人再各说一句重新投，再平票就没人出局。',
     '· 出局不公布身份。退场的人不能再发言，也不能再投票。',
-    '· 被毒杀的人不留遗言，也不能开枪。',
-    '· 女巫的解药和毒药各一次，同一夜只能用一瓶。守卫不能连续两晚守同一个人。',
+    '· 遗言：只有第一夜出局的人和白天被放逐的人可以留；之后夜晚出局的人没有遗言。被毒杀的不留遗言，也不能开枪。',
+    '· 女巫的解药和毒药各一次，同一夜只能用一瓶；解药用完后就听不到刀口，且只有第一夜能自救。守卫不能连续两晚守同一个人。',
     '· 猎人、狼王出局时可以开枪带走一人；被枪带走的猎人还能再开一枪。',
     '· ' + ((typeof S !== 'undefined' && S && S.winMode === 'parity')
       ? '狼人只要杀到存活人数与狼数持平就获胜，好人放逐全部狼人获胜。'
@@ -3016,17 +3017,17 @@ function publicLogText() {
   for (const it of S.log) {
     if (it.kind === 'speech') {
       rows.push('第 ' + it.round + ' 天 · ' + it.seat + ' 号 ' + it.name + '：' +
-        clip(String(it.text || '').replace(/\s+/g, ' '), 52));
+        clip(String(it.text || '').replace(/\s+/g, ' '), 75));
     } else if (it.kind === 'lastword') {
       rows.push('第 ' + it.round + ' 天 · ' + it.seat + ' 号 ' + it.name + '（遗言）：' +
-        clip(String(it.text || '').replace(/\s+/g, ' '), 40));
+        clip(String(it.text || '').replace(/\s+/g, ' '), 55));
     } else if (it.kind === 'vote') {
       const line = (it.picks || []).filter(p => p.to != null)
-        .map(p => p.from + ' → ' + p.to).join('，');
+        .map(p => p.from + ' → ' + p.to + (p.reason ? '（' + p.reason + '）' : '')).join('，');
       rows.push('第 ' + it.round + ' 天 · 投票' + (it.pk ? '（PK 轮）' : '') + '：' + (line || '全员弃票'));
     }
   }
-  return rows.slice(-14).join('\n');
+  return rows.slice(-12).join('\n');
 }
 
 function publicState() {
@@ -3105,26 +3106,29 @@ function parseSeat(text, allowed) {
 }
 
 /* 让模型挑一个座位号。解析不出来就再逼一次，实在不行才交给调用方兜底。
-   不这么做的话，狼刀和放逐会因为模型多说了一句话就直接变成随机。 */
+   不这么做的话，狼刀和放逐会因为模型多说了一句话就直接变成随机。
+   返回 { seat, text }：text 是模型的原始回答（可能带投票理由）。 */
 async function chooseSeat(p, runId, body, cands, spec, task) {
   const allowed = cands.map(c => (typeof c === 'number' ? c : c.seat));
-  if (!allowed.length) return null;
+  if (!allowed.length) return { seat: null, text: '' };
   const askOnce = txt => callLLM({
     system: sysPrompt(p, { task: task || 'kill' }),
     user: txt,
     runId: runId,
-    maxTokens: 64,
+    maxTokens: 96,
     spec: spec
   });
 
-  let seat = parseSeat(await askOnce(body), allowed);
-  if (seat != null) return seat;
+  const text = await askOnce(body);
+  let seat = parseSeat(text, allowed);
+  if (seat != null) return { seat, text: String(text || '').trim() };
 
   const retry = body +
     '\n\n【重来】上一次没有给出有效的座位号。这次只输出一个数字，从 ' +
     allowed.join('、') + ' 里选一个，不要写任何别的内容。';
-  seat = parseSeat(await askOnce(retry), allowed);
-  return seat;
+  const text2 = await askOnce(retry);
+  seat = parseSeat(text2, allowed);
+  return { seat, text: String(text2 || '').trim() };
 }
 
 function topSeat(map) {
@@ -4138,9 +4142,9 @@ async function nightPhase(id) {
         title: '你今晚要刀谁', tip: '狼队只剩你了，你说了算', cands: killPool
       });
     } else {
-      chosen = await chooseSeat(w, id,
+      chosen = (await chooseSeat(w, id,
         '【狼人行动】\n今晚由你独自出手。\n可刀的对象：' + candText,
-        candSeats, w.spec, 'kill');
+        candSeats, w.spec, 'kill')).seat;
     }
     killSeat = chosen ?? pick(candSeats);
     godMsg('狼人 ' + w.name + ' 单独决定刀 ' + nameOf(killSeat), '🐺');
@@ -4186,16 +4190,17 @@ async function nightPhase(id) {
 
     const picked = await pool(wolvesAlive.filter(w => !isMe(w)), CFG.conc, async w => {
       await gate(id);
-      return await chooseSeat(w, id,
+      return (await chooseSeat(w, id,
         '【狼人定刀】\n夜聊记录：\n' + lines.join('\n') + '\n\n可刀的对象：' + candText,
-        candSeats, w.spec, 'kill');
+        candSeats, w.spec, 'kill')).seat;
     });
     if (wolvesAlive.some(isMe)) picked.push(myKill);
 
     const tally = new Map();
     picked.filter(v => v != null).forEach(v => tally.set(v, (tally.get(v) || 0) + 1));
     const top = topSeat(tally);
-    killSeat = top ? top.seat : pick(candSeats);
+    // 平票时别固定偏向某个座位，随机挑一个
+    killSeat = top ? (top.tie.length > 1 ? pick(top.tie) : top.seat) : pick(candSeats);
     const pairs = wolvesAlive.filter(w => !isMe(w)).map((w, i) => w.name + '→' + (picked[i] == null ? '空' : nameOf(picked[i])));
     if (wolvesAlive.some(isMe)) pairs.push(HUMAN_NAME + '→' + (myKill == null ? '空' : nameOf(myKill)));
     godMsg('狼队定刀：' + nameOf(killSeat) + '（' + pairs.join('，') + '）', '🔪');
@@ -4220,9 +4225,9 @@ async function nightPhase(id) {
       if (isMe(seer)) {
         target = await askHumanSafe(id, 'pick', { title: '你要验谁', tip: '结果只有你自己知道', cands });
       } else {
-        target = await chooseSeat(seer, id,
+        target = (await chooseSeat(seer, id,
           '【预言家验人】\n可验的对象：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、'),
-          cands, seer.spec, 'check');
+          cands, seer.spec, 'check')).seat;
       }
       if (target == null) target = pick(cands).seat;
       const t = seatOf(target);
@@ -4260,11 +4265,11 @@ async function nightPhase(id) {
           title: '今晚守谁', tip: guard.guardLast ? '上一夜守的是 ' + guard.guardLast + ' 号，今晚不能重复' : '不能连着守同一个人', cands
         });
       } else {
-        t = await chooseSeat(guard, id,
+        t = (await chooseSeat(guard, id,
           '【守卫行动】\n今晚可以守护的对象：' +
             cands.map(s => s.seat + ' 号 ' + s.name).join('、') +
             (guard.guardLast ? '\n上一夜你守的是 ' + guard.guardLast + ' 号，今晚不能重复。' : ''),
-          cands, guard.spec, 'guard');
+          cands, guard.spec, 'guard')).seat;
       }
       if (t == null) t = pick(cands).seat;
       guardSeat = t;
@@ -4303,13 +4308,19 @@ async function nightPhase(id) {
       }
       note = saved ? '用解药' : poisonSeat != null ? '毒 ' + nameOf(poisonSeat) : '不用药';
     } else {
+      /* 标准：解药用完就听不到刀口；自救只有第一夜可以 */
+      const knowsKill = !witch.saveUsed;
+      const canSelfSave = S.round === 1;
       const ans = await callLLM({
         system: sysPrompt(witch, { task: 'witch' }),
         user: [
           '【女巫行动】',
-          '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。',
+          knowsKill
+            ? '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。'
+            : '你的解药已经用完，今晚听不到刀口，只能决定要不要用毒药。',
           '解药：' + (witch.saveUsed ? '已用完' : '未使用') + '；毒药：' + (witch.poisonUsed ? '已用完' : '未使用') + '。',
-          '同一夜只能用一瓶药。',
+          '同一夜只能用一瓶药。' +
+            (canSelfSave ? '如果今晚被袭击的是你自己，只有这第一夜可以自救。' : '从第二夜起解药不能用来救自己。'),
           '可毒对象：' + poisonList.map(s => s.seat + ' 号 ' + s.name).join('、'),
           '',
           '回复格式只能是下面三种之一：',
@@ -4329,7 +4340,9 @@ async function nightPhase(id) {
         const ps = parseSeat(raw, poisonCands);
         if (ps != null) { witch.poisonUsed = true; poisonSeat = ps; }
       } else if (/救/.test(raw) && !noSave && !witch.saveUsed) {
-        witch.saveUsed = true; saved = true;
+        // 第二夜起不能自救：模型没听话就把这次「救」当没看见
+        const selfSaveBlocked = victim && victim.seat === witch.seat && S.round > 1;
+        if (!selfSaveBlocked) { witch.saveUsed = true; saved = true; }
       }
       note = clip(ans, 24);
     }
@@ -4376,12 +4389,14 @@ async function nightPhase(id) {
   updateAlive();
   setProgress(0.88);
 
-  /* ---- 遗言（被毒杀的不留遗言） ---- */
-  for (const d of deaths) {
-    if (d.reason === 'poison') continue;
-    const p = seatOf(d.seat);
-    if (!p || p.alive) continue;
-    await lastWords(p, id, '夜里被狼人袭击');
+  /* ---- 遗言（标准规则：只有第一夜出局的人留遗言；被毒杀的不留） ---- */
+  if (S.round === 1) {
+    for (const d of deaths) {
+      if (d.reason === 'poison') continue;
+      const p = seatOf(d.seat);
+      if (!p || p.alive) continue;
+      await lastWords(p, id, '夜里被狼人袭击');
+    }
   }
 
   /* ---- 猎人 / 狼王 夜间开枪 ---- */
@@ -4422,15 +4437,18 @@ async function shoot(p, reason, id) {
         passLabel: '不开枪'
       });
     } else {
+      const mates = S.seats.filter(s => isWolfRole(s.role) && s.seat !== p.seat)
+        .map(s => s.seat + ' 号 ' + s.name).join('、');
       const ans = await callLLM({
         system: sysPrompt(p, { task: 'shoot' }),
         user: [
           '【' + (isKing ? '狼王' : '猎人') + '技能】',
           '你' + reason + '出局，可以带走一名存活玩家。',
           '候选：' + cands.map(s => s.seat + ' 号 ' + s.name).join('、'),
+          isKing && mates ? '【提醒】你是狼王，你的狼队友是 ' + mates + '。把枪口对准好人，别带走自己人。' : '',
           '',
           '只回复一个座位号数字。如果选择不开枪，回复 0。'
-        ].join('\n'),
+        ].filter(Boolean).join('\n'),
         runId: id,
         maxTokens: 64,
         spec: p.spec
@@ -4492,6 +4510,7 @@ async function dayPhase(id) {
   /* ---- 依次发言 ---- */
   const order = speechOrder();
   const total = order.length;
+  let exploded = false;   // 狼人自爆会直接跳过投票入夜
   for (let i = 0; i < total; i++) {
     await gate(id);
     const p = order[i];
@@ -4502,6 +4521,7 @@ async function dayPhase(id) {
     setProgress((i + 0.2) / total * 0.82);
 
     const card = msgSpeech(p);
+    let wantExplode = false;
 
     const parts = ['现在是第 ' + S.round + ' 天白天，轮到你发言。', publicState()];
     const priv = privateInfo(p);
@@ -4514,6 +4534,13 @@ async function dayPhase(id) {
     if (p.role === 'SEER' && S.round >= 2) {
       parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
         '把第几夜验了谁、什么结果报出来——好人只有靠这个才能把票合到一起。跳不跳、什么时候跳，你自己判断。');
+    }
+    /* 狼队战术：悍跳与自爆都是标准打法 */
+    if (isWolfRole(p.role) && S.round >= 2) {
+      parts.push('【狼队战术】如果有人跳了预言家报查验：跳的人若是你的队友，帮他抬票；' +
+        '若是好人，可以考虑悍跳预言家反咬——编一套自己的查验记录，但要编得像，别和公开事实矛盾。');
+      parts.push('【自爆选项】你也可以翻牌自爆：发言时只输出【自爆】两个字，你会立即出局并直接进入天黑，' +
+        '跳过今天剩余的发言和投票。只有当你已经被公开查杀、今天必死时才值得用。');
     }
     parts.push('输出两段，严格按格式，不要多写：');
     parts.push('【心声】一句不超过 18 字的真实想法');
@@ -4551,6 +4578,27 @@ async function dayPhase(id) {
       p.lastWhisper = parts2.whisper;
       if (parts2.whisper) p.whispers.push({ round: S.round, text: parts2.whisper });
       S.log.push({ round: S.round, kind: 'speech', seat: p.seat, name: p.name, text: parts2.body, whisper: parts2.whisper });
+
+      /* 狼人自爆：翻牌出局，白天到此为止（真人狼在发言框里输【自爆】也能触发） */
+      wantExplode = isWolfRole(p.role) && S.round >= 2 &&
+        /【自爆】/.test(parts2.body) &&
+        parts2.body.replace(/【自爆】/g, '').replace(/\s/g, '').length < 8;
+      if (wantExplode) {
+        exploded = true;
+        p.alive = false;
+        p.outRound = S.round;
+        p.outReason = '狼人自爆';
+        S.lastDeathSeat = p.seat;
+        const line = p.seat + ' 号 ' + p.name + ' 翻牌自爆——他就是狼人！白天到此为止，直接进入天黑。';
+        S.news.push(line);
+        S.history.push(line);
+        card.set('（翻牌自爆，身份是狼人）');
+        msgEvent('💥', line, 'hot death');
+        S.log.push({ round: S.round, kind: 'explode', seat: p.seat, name: p.name, text: '自爆出局' });
+        deathBeat('vote');
+        renderSeats();
+        updateAlive();
+      }
     } catch (e) {
       if (e instanceof StopGame) throw e;
       card.set('（发言人卡顿，本轮没有发言）');
@@ -4559,11 +4607,13 @@ async function dayPhase(id) {
 
     S.speaking = null; renderSeats();
     scrollFeed(true);
+    if (wantExplode) { await beat(700); break; }
     await beat();
   }
   setProgress(0.84);
 
-  /* ---- 投票 ---- */
+  /* ---- 投票（狼人自爆后直接天黑，没有投票） ---- */
+  if (!exploded) {
   await gate(id);
   setStage('day', '第 ' + S.round + ' 天', '投票放逐');
   setPhasePill('vote', '投票');
@@ -4650,6 +4700,7 @@ async function dayPhase(id) {
     S.history.push('第 ' + S.round + ' 天：平票，无人出局');
     msgEvent('🤝', '仍然平票，本轮无人出局。');
   }
+  }   // end if (!exploded)
 
   S.speaking = null;
   renderSeats();
@@ -4696,18 +4747,29 @@ async function runVote(id, restrict) {
     const allowed = cands.filter(s => s.seat !== p.seat).map(s => s.seat);
     if (!allowed.length) return null;
     try {
-      const to = await chooseSeat(p, id, [
+      const res = await chooseSeat(p, id, [
           '【投票阶段】',
           publicState(),
           privateInfo(p) ? '【只有你知道】\n' + privateInfo(p) : '',
           '【你之前的发言与投票】\n' + memText(p),
           '从下列玩家中选一个放逐：' + cands.filter(s => s.seat !== p.seat)
-            .map(s => s.seat + ' 号 ' + s.name).join('、')
+            .map(s => s.seat + ' 号 ' + s.name).join('、'),
+          isWolfRole(p.role) ? '【狼队纪律】不要把票投给自己的狼队友。' : '',
+          '',
+          '先输出一个座位号数字，再换行用一句话（不超过 20 字）说明投他的理由。'
         ].filter(Boolean).join('\n\n'), allowed, p.spec, 'vote');
-      return { from: p.seat, to };
+
+      // 理由里可能提到别的座位号，所以优先信第一行的数字，别用整段解析
+      const firstLine = String(res.text || '').split('\n').map(s => s.trim()).find(Boolean) || '';
+      let to = parseSeat(firstLine, allowed);
+      if (to == null) to = res.seat;
+
+      const reason = clip(
+        String(res.text || '').split('\n').slice(1).join(' ').replace(/\s+/g, ' ').trim(), 24);
+      return { from: p.seat, to, reason };
     } catch (e) {
       if (e instanceof StopGame) throw e;
-      return { from: p.seat, to: null };
+      return { from: p.seat, to: null, reason: '' };
     }
   });
 
@@ -4730,7 +4792,7 @@ async function resolveVote(picks, id, isPK) {
   picks.forEach(v => { if (v.to != null) tally.set(v.to, (tally.get(v.to) || 0) + 1); });
 
   renderVoteBox(picks, tally);
-  S.log.push({ round: S.round, kind: 'vote', pk: !!isPK, picks: picks.map(v => ({ from: v.from, to: v.to })) });
+  S.log.push({ round: S.round, kind: 'vote', pk: !!isPK, picks: picks.map(v => ({ from: v.from, to: v.to, reason: v.reason || '' })) });
 
   const top = topSeat(tally);
   if (!top) return { outSeat: null, tie: [] };
