@@ -3309,7 +3309,7 @@ const TTS = (() => {
   let currentAudio = null;
   let useBaidu = false; // 百度TTS备选方案
 
-  // 百度TTS接口（通过Pages代理解决https和CORS）
+  // 百度TTS接口（直接用https，不走代理）
   function baiduSpeak(text, opts) {
     if (!text) return;
     const o = opts || {};
@@ -3321,11 +3321,19 @@ const TTS = (() => {
     // 截断过长文本
     const shortText = text.slice(0, 200);
     const spd = Math.round((o.rate || rate) * 4); // 百度语速0-9
-    const url = `/api/proxy?target=https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent(shortText)}`;
+    const url = `https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent(shortText)}`;
     const audio = new Audio(url);
     audio.volume = 1;
     audio.play().catch((e) => {
       console.warn('百度TTS播放失败:', e);
+      // 如果直接调用失败，再试代理
+      const proxyUrl = `/api/proxy?target=${encodeURIComponent(url)}`;
+      const audio2 = new Audio(proxyUrl);
+      audio2.volume = 1;
+      audio2.play().catch((e2) => {
+        console.warn('代理TTS也失败:', e2);
+      });
+      currentAudio = audio2;
     });
     currentAudio = audio;
   }
@@ -3373,13 +3381,23 @@ const TTS = (() => {
     // 先测试百度TTS（更可靠）
     if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     const spd = Math.round(rate * 4);
-    const url = `/api/proxy?target=https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent('语音播报测试，你能听到我说话吗？')}`;
+    const url = `https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent('语音播报测试，你能听到我说话吗？')}`;
     const audio = new Audio(url);
     audio.volume = 1;
     audio.onplay = () => toast('🔊 正在用百度TTS播放测试语音…', 3000);
     audio.onerror = (e) => {
       console.error('百度TTS失败:', e);
-      toast('❌ 百度TTS也失败了，请检查网络', 4000);
+      // 再试代理
+      const proxyUrl = `/api/proxy?target=${encodeURIComponent(url)}`;
+      const audio2 = new Audio(proxyUrl);
+      audio2.volume = 1;
+      audio2.onplay = () => toast('🔊 通过代理播放…', 3000);
+      audio2.onerror = (e2) => {
+        toast('❌ 直接和代理都失败了，请检查网络', 4000);
+      };
+      audio2.play();
+      currentAudio = audio2;
+      return;
     };
     audio.play().catch((e) => {
       toast('❌ 播放失败:' + e.message, 4000);
