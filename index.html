@@ -1849,6 +1849,16 @@ function loadCfg() {
 /* ============================================================
    模型调用
    ============================================================ */
+/* 思考型模型会把思维链直接写进正文，或者包在  这类标签里。
+   这类内容一旦漏到桌上，就等于把底牌摊开了，所以在入口处先剥干净。 */
+function stripThinking(text) {
+  let t = String(text || '');
+  t = t.replace(/<(think|thinking|reasoning|analysis)>[\s\S]*?<\/\1>/gi, '');
+  t = t.replace(/^[\s\S]*?<\/(think|thinking|reasoning|analysis)>/i, '');   // 开头被截断，只剩闭合标签
+  t = t.replace(/^\s*<(think|thinking|reasoning|analysis)>[\s\S]*$/i, '');  // 标签没闭合，说明整段都在思考
+  return t.trim();
+}
+
 function isMostlyEnglish(text) {
   if (!text) return false;
   const letters = text.match(/[a-zA-Z]/g);
@@ -1921,19 +1931,29 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
       const data = await res.json();
       trackUsage(data.usage);
       const msg = data.choices && data.choices[0] && data.choices[0].message;
-      let content = msg && typeof msg.content === 'string' ? msg.content : '';
-      const reasoning = msg && typeof msg.reasoning_content === 'string' ? msg.reasoning_content : '';
-      // 深度思考模型：content为空但有思考过程，说明token不够没说完，自动加token重试一次
-      if (!content.trim() && reasoning.trim() && attempt < 2 && body.max_tokens < 800) {
-        body.max_tokens = Math.min(800, body.max_tokens * 2);
-        continue;
+      const rawContent = msg && typeof msg.content === 'string' ? msg.content : '';
+      // 各家叫法不一样：reasoning_content / reasoning / thinking
+      const reasoning = msg
+        ? (['reasoning_content', 'reasoning', 'thinking']
+            .map(k => msg[k]).find(v => typeof v === 'string' && v.trim()) || '')
+        : '';
+      const content = stripThinking(rawContent);
+
+      // 只吐了思考没有正式回答：加大额度再问一次。
+      // 绝对不能拿思考当正文——那等于把「我是狼人、队友是 2 号」直接贴到公屏上。
+      if (!content) {
+        if (attempt < 2) {
+          body.max_tokens = Math.min(2000, Math.max(600, body.max_tokens * 2));
+          await sleep(300);
+          continue;
+        }
+        throw new Error('模型只返回了思考过程，没给出正式回答' +
+          (reasoning ? '（额度被思考吃掉了，试试把发言长度调短）' : ''));
       }
-      if (!content.trim()) content = reasoning; // 实在没有最终回答就用思考内容兜底
-      if (!content.trim()) throw new Error('模型返回空内容');
       // 英文检测：如果输出主要是英文，重试一次并加强中文要求
       if (isMostlyEnglish(content) && attempt < 2) {
         body.messages[0].content = system + '\n\n【强制要求】你的所有输出必须是简体中文，绝对不能用英文。即使思考过程用英文，最终回答也必须全是中文。';
-        body.max_tokens = Math.min(800, body.max_tokens * 2);
+        body.max_tokens = Math.min(2000, body.max_tokens * 2);
         continue;
       }
       // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
@@ -1942,11 +1962,11 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
       if (!content.includes('【发言】') && metaEchoScore(content) >= 2 && attempt < 2) {
         console.warn('检测到元叙述（' + metaEchoScore(content) + ' 处），重试一次');
         body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
-        body.max_tokens = Math.min(800, body.max_tokens * 2);
+        body.max_tokens = Math.min(2000, body.max_tokens * 2);
         continue;
       }
       if (runId !== RUN) throw new StopGame();
-      return content.trim();
+      return content;
     } catch (e) {
       clearTimeout(timer);
       if (runId !== RUN) throw new StopGame();
@@ -2113,6 +2133,9 @@ async function genIdentity(seat, spec, id, taken) {
    只在真的出现「格式 / 字数 / 输出」这类元叙述时才动手。 */
 const SPEAK_META = /(输出格式|格式如下|格式要求|按.{0,4}格式|字数|分两段|两段(来|合)|合起来|以上为|以下是(我的|本次)?发言|我(来|将)扮演|作为(一个)?(AI|大模型|语言模型)|不要输出思考|直接输出|共\s*\d+\s*字)/;
 const SPEAK_META_HEAD = /^(思路|思考过程|思考|分析|策略|输出|格式|要求|备注|自检)\s*[:：]/;
+
+/* 狼人白天发言里不该出现的自曝说法。好人跳「我是预言家」是合法玩法，不算在内。 */
+const SELF_REVEAL = /我是(一只)?狼|我(的)?狼队友|我们(狼队|是狼)|狼队里有我|我的队友是/;
 
 function cleanSpoken(raw) {
   const src = String(raw || '').replace(/\r/g, '');
@@ -2647,7 +2670,7 @@ async function lastWords(p, id, reason) {
         system: sysPrompt(p, { task: 'lastword' }),
         user: publicState() + '\n\n【遗言】你' + reason + '出局，留最后一到三句话。',
         runId: id,
-        maxTokens: 320,
+        maxTokens: 520,
         spec: p.spec
       });
       const t = String(raw || '').replace(/【[^】]*】/g, '').trim();
@@ -2835,15 +2858,20 @@ const TASK_KIND = {
 function outputContract(task, wolf) {
   const len = LEN_SPEC[CFG.speechLen] || LEN_SPEC.normal;
   switch (task) {
-    case 'speak':
-      return [
+    case 'speak': {
+      const arr = [
         '【本回合输出】',
         '轮到你白天发言。严格只输出两段，不要多写别的：',
         '【心声】不超过 18 字，写你此刻真实的盘算。观众看得到，桌上其他人看不到。' +
           (wolf ? '可以暴露你真实的算计。' : '可以不体面，也可以怂。'),
-        '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。' +
-          (wolf ? '这一段必须把自己说成好人。' : '')
+        '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。'
       ];
+      if (wolf) {
+        arr.push('这一段必须把自己说成好人。【发言】里不许出现"我是狼""我的队友""我们狼队"这类话，' +
+          '也不许点出队友的座位号——那等于当场把牌摊在桌上。');
+      }
+      return arr;
+    }
     case 'lastword':
       return [
         '【本回合输出】',
@@ -2980,6 +3008,27 @@ function aliveSeats() { return S.seats.filter(s => s.alive); }
 function seatOf(n) { return S.seats.find(s => s.seat === n) || null; }
 function nameOf(n) { const s = seatOf(n); return s ? (s.seat + ' 号 ' + s.name) : ('座位 ' + n); }
 
+/* 牌桌上人人都看得到的东西：谁说了什么、谁投了谁。
+   心声和狼人夜聊永远不进这里——那是只有上帝视角和本人能看到的信息。 */
+function publicLogText() {
+  if (!S || !S.log || !S.log.length) return '';
+  const rows = [];
+  for (const it of S.log) {
+    if (it.kind === 'speech') {
+      rows.push('第 ' + it.round + ' 天 · ' + it.seat + ' 号 ' + it.name + '：' +
+        clip(String(it.text || '').replace(/\s+/g, ' '), 52));
+    } else if (it.kind === 'lastword') {
+      rows.push('第 ' + it.round + ' 天 · ' + it.seat + ' 号 ' + it.name + '（遗言）：' +
+        clip(String(it.text || '').replace(/\s+/g, ' '), 40));
+    } else if (it.kind === 'vote') {
+      const line = (it.picks || []).filter(p => p.to != null)
+        .map(p => p.from + ' → ' + p.to).join('，');
+      rows.push('第 ' + it.round + ' 天 · 投票' + (it.pk ? '（PK 轮）' : '') + '：' + (line || '全员弃票'));
+    }
+  }
+  return rows.slice(-14).join('\n');
+}
+
 function publicState() {
   const alive = aliveSeats();
   const dead = S.seats.filter(s => !s.alive);
@@ -2991,10 +3040,16 @@ function publicState() {
     lines.push('【本轮公开信息】');
     S.news.forEach(n => lines.push('· ' + n));
   }
+  const plog = publicLogText();
+  if (plog) {
+    lines.push('');
+    lines.push('【发言与投票记录】（按时间顺序，说话时只能引用这里出现过的内容）');
+    lines.push(plog);
+  }
   if (S.history.length) {
     lines.push('');
     lines.push('【前情】');
-    S.history.slice(-12).forEach(n => lines.push('· ' + n));
+    S.history.slice(-6).forEach(n => lines.push('· ' + n));
   }
   return lines.join('\n');
 }
@@ -4455,6 +4510,11 @@ async function dayPhase(id) {
       parts.push('【提示】你昨晚是狼人袭击的目标。');
     }
     parts.push('【你之前的发言与投票】\n' + memText(p));
+    /* 预言家是好人把票合到一起的唯一抓手，不给提示的话它经常一整局都不吭声 */
+    if (p.role === 'SEER' && S.round >= 2) {
+      parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
+        '把第几夜验了谁、什么结果报出来——好人只有靠这个才能把票合到一起。跳不跳、什么时候跳，你自己判断。');
+    }
     parts.push('输出两段，严格按格式，不要多写：');
     parts.push('【心声】一句不超过 18 字的真实想法');
     parts.push('【发言】你这一轮的正式发言，结合公开信息给出判断和最怀疑的人');
@@ -4469,14 +4529,22 @@ async function dayPhase(id) {
         });
         parts2 = txt ? { body: txt, whisper: '' } : { body: '（想了一下，这轮没说话）', whisper: '' };
       } else {
-        const raw = await callLLM({
-          system: sysPrompt(p, { task: 'speak' }),
+        const askSpeech = extra => callLLM({
+          system: sysPrompt(p, { task: 'speak' }) + (extra || ''),
           user: parts.join('\n\n'),
           runId: id,
-          maxTokens: CFG.speechLen === 'long' ? 1200 : CFG.speechLen === 'short' ? 460 : 780,
+          maxTokens: CFG.speechLen === 'long' ? 1400 : CFG.speechLen === 'short' ? 560 : 900,
           spec: p.spec
         });
-        parts2 = splitSpeak(raw);
+        let sp = splitSpeak(await askSpeech());
+        /* 狼人白天把底牌说漏嘴了：这一遍作废，加重语气重说一次 */
+        if (isWolfRole(p.role) && SELF_REVEAL.test(sp.body)) {
+          godMsg(p.name + ' 这句漏了底，已要求重说', '⚠️');
+          sp = splitSpeak(await askSpeech(
+            '\n\n【再强调一遍】你上一遍把自己的身份说出来了，这一遍作废。你是狼人，必须假装好人重说：' +
+            '不许出现"我是狼""我的队友""我们狼队"这类话，也不许点出队友的座位号。'));
+        }
+        parts2 = sp;
       }
       card.set(parts2.body, parts2.whisper);
       p.mem.push('第 ' + S.round + ' 天我说：' + clip(parts2.body.replace(/\s+/g, ' '), 90));
@@ -4531,7 +4599,7 @@ async function dayPhase(id) {
                   '\n\n你和 ' + pkSeats.filter(x => x !== seatNum).map(nameOf).join('、') +
                   ' 票数相同，进入 PK。\n只有一轮机会，说 2 句为自己辩护，并指出对手的问题。',
             runId: id,
-            maxTokens: 460,
+            maxTokens: 700,
             spec: p.spec
           });
           const sp = splitSpeak(text);
