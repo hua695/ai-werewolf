@@ -1099,6 +1099,19 @@ body.player-view .whisper{display:none!important}
 }
 .roster-item.me svg{box-shadow:0 0 0 2px rgba(217,169,75,.45)}
 
+/* ══════════ 净桌模式：收起两侧面板，只留牌桌 ══════════ */
+#hudBtn{display:none}
+@media (min-width:901px){
+  #hudBtn{display:inline-flex}
+  .app{transition:grid-template-columns .45s var(--ease)}
+  .panel{transition:opacity .35s var(--ease)}
+  body.hud-hide .app{grid-template-columns:0px minmax(0,1fr) 0px}
+  body.hud-hide .panel{opacity:0;pointer-events:none}
+}
+@media (min-width:901px) and (max-width:1180px){
+  body.hud-hide .app{grid-template-columns:minmax(0,1fr) 0px}
+}
+
 /* ══════════ 响应式 ══════════ */
 .mobile-tabs{display:none}
 @media (max-width:1180px){
@@ -1224,6 +1237,7 @@ body.player-view .whisper{display:none!important}
     <span class="metric" id="chipText">筹码 <b>100</b></span>
   </div>
   <div class="topactions">
+    <button class="icon-btn" id="hudBtn" title="收起两侧面板，只看牌桌（点牌桌背景也能收）">净桌</button>
     <div class="sound-wrap">
       <button class="icon-btn on" id="soundBtn" title="声音设置" aria-label="声音设置" aria-pressed="true">🔊</button>
       <div class="sound-menu" id="soundMenu" style="display:none">
@@ -5467,6 +5481,25 @@ $('testAllBtn').addEventListener('click', testAll);
 
 /* 快进 / 押注台 */
 $('fastBtn').addEventListener('click', toggleFast);
+
+/* 净桌模式：收起两侧面板，只看牌桌；点牌桌背景也能收，按钮恢复 */
+function setHud(hide) {
+  document.body.classList.toggle('hud-hide', hide);
+  const b = $('hudBtn');
+  if (!b) return;
+  b.textContent = hide ? '展开' : '净桌';
+  b.classList.toggle('on', hide);
+  b.title = hide ? '把座位和配置面板放回来' : '收起两侧面板，只看牌桌（点牌桌背景也能收）';
+}
+$('hudBtn').addEventListener('click', () => {
+  setHud(!document.body.classList.contains('hud-hide'));
+});
+$('stage').addEventListener('click', e => {
+  // 已经收起时不动作（展开用按钮）；点到消息、座位、对话框这些交互元素也不收
+  if (document.body.classList.contains('hud-hide')) return;
+  if (e.target.closest('#feed,#roster,#ask,.statusbar,.bet-dock,.sound-menu,button,input,select,textarea,label,a,.panel')) return;
+  setHud(true);
+});
 $('betToggle').addEventListener('click', () => {
   const panel = $('betPanel');
   if (!panel) return;
