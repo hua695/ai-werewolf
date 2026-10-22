@@ -1826,6 +1826,15 @@ function isMostlyEnglish(text) {
   return letterCount / total > 0.5;
 }
 
+/* 模型有没有在「讲自己怎么输出」。只认这些明确的元叙述说法，
+   正常发言里的「所以」「但是」「我们」不算。 */
+const META_ECHO = /(输出格式|格式要求|格式如下|字数|分两段|两段(来|合)|合起来|我(来|将)扮演|作为(一个)?(AI|大模型|语言模型)|不要输出思考|直接输出|我应该先|我需要先|让我先|先分析一下|思考过程)/g;
+
+function metaEchoScore(text) {
+  const hits = String(text || '').match(META_ECHO);
+  return hits ? hits.length : 0;
+}
+
 function trackUsage(u) {
   if (!u) return;
   CALL_STATS.calls++;
@@ -1893,10 +1902,11 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
         body.max_tokens = Math.min(800, body.max_tokens * 2);
         continue;
       }
-      // 元叙述检测：如果输出里有大量思考过程，重试一次并加强禁止要求
-      const metaCount = (content.match(/注意|要求|格式|输出|思考|分析|所以|但是|或者|可能|应该|需要|我们|你在|牌桌上|正式发言|合起来|字数|两段|【心声】|【发言】/g) || []).length;
-      if (metaCount > 8 && attempt < 2) {
-        console.warn('检测到元叙述太多(' + metaCount + '个)，重试一次');
+      // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
+      // 「所以」「但是」「我们」「【发言】」是正常发言和正常格式，不能算进去，
+      // 否则一句长一点的发言就会被误判，白白重试两次。
+      if (!content.includes('【发言】') && metaEchoScore(content) >= 2 && attempt < 2) {
+        console.warn('检测到元叙述（' + metaEchoScore(content) + ' 处），重试一次');
         body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
         body.max_tokens = Math.min(800, body.max_tokens * 2);
         continue;
