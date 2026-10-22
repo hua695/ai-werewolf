@@ -1210,6 +1210,9 @@ body.player-view .whisper{display:none!important}
         <div class="sm-item sm-sub" id="smTtsSkip" style="display:none">
           <button class="sm-btn" id="smSkip">跳过当前播报</button>
         </div>
+        <div class="sm-item sm-sub" id="smTtsTest" style="display:none">
+          <button class="sm-btn" id="smTest">🔊 测试语音</button>
+        </div>
       </div>
     </div>
     <button class="icon-btn" id="fastBtn" title="快进，按 F 也能切">快进</button>
@@ -1792,6 +1795,7 @@ function loadCfg() {
       if (sm) sm.checked = true;
       $('smTtsOpts').style.display = 'flex';
       $('smTtsSkip').style.display = 'flex';
+      $('smTtsTest').style.display = 'flex';
     }
     if (c.ttsRate) {
       TTS.setRate(c.ttsRate);
@@ -3304,13 +3308,16 @@ const TTS = (() => {
   let scope = 'speech';
   let currentUtter = null;
   let zhVoice = null;
+  let voicesReady = false;
 
   function pickVoice() {
     if (!window.speechSynthesis) return null;
     const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    voicesReady = true;
     // 优先选中文语音
     zhVoice = voices.find(v => /zh|cmn|chinese/i.test(v.lang)) ||
-              voices.find(v => /zh/i.test(v.name)) ||
+              voices.find(v => /zh|中文|普通话/i.test(v.name)) ||
               voices[0] || null;
     return zhVoice;
   }
@@ -3318,6 +3325,9 @@ const TTS = (() => {
   if (window.speechSynthesis) {
     pickVoice();
     window.speechSynthesis.onvoiceschanged = pickVoice;
+    // 某些浏览器需要等一下才能拿到voices
+    setTimeout(pickVoice, 500);
+    setTimeout(pickVoice, 1500);
   }
 
   function speak(text, opts) {
@@ -3325,14 +3335,22 @@ const TTS = (() => {
     const o = opts || {};
     // 停止当前播报
     window.speechSynthesis.cancel();
+    // 如果语音还没加载好，再试一次
+    if (!zhVoice) pickVoice();
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = o.rate || rate;
     utter.pitch = o.pitch || 1;
     utter.volume = 1;
     utter.lang = 'zh-CN';
     if (zhVoice) utter.voice = zhVoice;
+    utter.onerror = (e) => {
+      console.warn('TTS error:', e);
+    };
     currentUtter = utter;
-    window.speechSynthesis.speak(utter);
+    // 延迟一点播放，确保cancel生效
+    setTimeout(() => {
+      if (enabled) window.speechSynthesis.speak(utter);
+    }, 50);
   }
 
   function stop() {
@@ -3344,15 +3362,26 @@ const TTS = (() => {
     stop();
   }
 
+  function test() {
+    if (!window.speechSynthesis) {
+      toast('当前浏览器不支持语音播报');
+      return false;
+    }
+    if (!voicesReady) pickVoice();
+    speak('语音播报测试，你能听到我说话吗？', { rate: 1 });
+    return true;
+  }
+
   return {
     setEnabled(v) { enabled = v; if (!v) stop(); },
     get enabled() { return enabled; },
     setRate(v) { rate = Number(v) || 1; },
     setScope(v) { scope = v; },
     get scope() { return scope; },
-    speak, stop, skip,
+    get supported() { return !!window.speechSynthesis; },
+    speak, stop, skip, test,
     speech(text, name) {
-      if (!enabled || scope !== 'all' && scope !== 'speech') return;
+      if (!enabled || (scope !== 'all' && scope !== 'speech')) return;
       const prefix = name ? (name + '说：') : '';
       speak(prefix + text);
     },
@@ -4860,10 +4889,17 @@ $('smTts').addEventListener('change', () => {
   TTS.setEnabled(on);
   $('smTtsOpts').style.display = on ? 'flex' : 'none';
   $('smTtsSkip').style.display = on ? 'flex' : 'none';
+  $('smTtsTest').style.display = on ? 'flex' : 'none';
   const cb = $('ttsEnabled');
   if (cb) cb.checked = on;
   saveCfg();
-  if (on) TTS.speak('语音播报已开启');
+  if (on) {
+    if (!TTS.supported) {
+      toast('当前浏览器不支持语音播报');
+    } else {
+      setTimeout(() => TTS.test(), 200);
+    }
+  }
 });
 $('smRate').addEventListener('change', () => {
   TTS.setRate($('smRate').value);
@@ -4874,6 +4910,10 @@ $('smRate').addEventListener('change', () => {
 $('smSkip').addEventListener('click', () => {
   TTS.skip();
   toast('已跳过当前播报');
+});
+$('smTest').addEventListener('click', () => {
+  TTS.test();
+  toast('正在播放测试语音…');
 });
 
 /* 配置面板里的语音设置同步 */
@@ -5071,6 +5111,7 @@ $('smSfx').checked = SFX.enabled;
 $('smTts').checked = TTS.enabled;
 $('smTtsOpts').style.display = TTS.enabled ? 'flex' : 'none';
 $('smTtsSkip').style.display = TTS.enabled ? 'flex' : 'none';
+$('smTtsTest').style.display = TTS.enabled ? 'flex' : 'none';
 $('smRate').value = TTS.rate;
 renderSeatEditor(null);
 renderSeats();
