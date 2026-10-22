@@ -7,7 +7,8 @@
    也能做 WebSocket 出站，所以放在这里。 */
 
 const TRUSTED = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-const WSS = 'wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
+/* Workers 的 fetch 不接受 wss:// 协议，WebSocket 出站要用 https + Upgrade 头 */
+const WSS = 'https://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1';
 const CHROMIUM_VERSION = '130.0.2849.68';
 const MAX_CHARS = 800;
 
@@ -135,7 +136,6 @@ export async function onRequestGet(context) {
       headers: {
         ...CORS,
         'Content-Type': 'audio/mpeg',
-        'Content-Length': String(total),
         // 同一句话反复播放走浏览器缓存，省一次往返
         'Cache-Control': 'public, max-age=86400'
       }
