@@ -554,6 +554,7 @@ body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
 }
 .msg.speech:hover{border-color:#2b3446;border-left-color:#39445a}
 .msg.speech .s-head{display:flex;align-items:center;gap:9px;margin-bottom:7px}
+.msg.speech .s-head img.ava{flex-shrink:0}
 .msg.speech .s-seat{
   width:21px;height:21px;border-radius:5px;display:grid;place-items:center;
   font-size:10.5px;font-weight:700;background:var(--ink-500);color:var(--text-3);
@@ -2002,13 +2003,18 @@ function trackUsage(u) {
 }
 
 /* 英文思维链泄漏：混元这类模型会把推理原文写进 content。
-   除了英文占比，再抓一批「只在跟自己辩论时」才会出现的词。 */
+   三个判据：英文占比、英文辩论词密度，以及「复述提示词章节名」——最后这条最准。 */
 const LEAK_WORDS = /\b(wait|hmm+|actually|let me|i think|i need|i should|instruction|the rule|means|point out|teammates?|regardless)\b/gi;
+const LEAK_STRONG = /\b(wait|hmm+|instruction|the rule|leaked|confusing|prompt)\b/gi;
+const PROMPT_ECHO = /【(发言与投票记录|本轮公开信息|只有你知道|你之前的发言与投票|本回合输出|怎么说话|狼队战术|自爆选项|策略提示)】/;
 
 function looksLikeThinking(text) {
   const t = String(text || '');
   if (!t) return false;
+  if (PROMPT_ECHO.test(t)) return true;   // 正常发言不会带这些标题，带了一定是在复述提示词
   if (isMostlyEnglish(t)) return true;
+  const strong = (t.match(LEAK_STRONG) || []).length;
+  if (strong >= 3) return true;           // Wait/instruction 这类词密集出现，基本是英文思考
   const hits = (t.match(LEAK_WORDS) || []).length;
   const cjk = (t.match(/[\u4e00-\u9fff]/g) || []).length;
   // 英文辩论词密集、中文又很少 → 基本可以认定是思考，不是在说话
@@ -2348,23 +2354,36 @@ function splitSpeak(raw) {
   let whisper = '';
   let body = t;
 
-  const mW = t.match(/【心声】([\s\S]*?)(?=【发言】|$)/);
-  if (mW) whisper = mW[1].trim();
+  /* 标签可能写成【心声】、心声：、**心声**、[心声]，都得认。
+     只认全角方括号的话，模型换个写法就会把心里话整段当公开发言，等于亮底牌。
+     两段都可能出现在前面，所以各自截到「对方标签」为止。 */
+  const W = '[【\\[［*]{0,2}心\\s*声[】\\]］*]{0,2}';
+  const SA = '[【\\[［*]{0,2}发\\s*言[】\\]］*]{0,2}';
+  const mW = t.match(new RegExp(W + '\\s*[:：]?\\s*([\\s\\S]*?)(?=' + SA + '|$)'));
+  if (mW && mW[1]) whisper = mW[1].trim();
 
-  const mS = t.match(/【发言】([\s\S]*)$/);
-  if (mS) {
-    body = mS[1].trim();
-    // 发言部分偶尔还会拖着「字数：…」之类的尾巴，顺手清一下
-    body = cleanSpoken(body);
+  const mS = t.match(new RegExp(SA + '\\s*[:：]?\\s*([\\s\\S]*?)(?=' + W + '|$)'));
+  if (mS && mS[1].trim()) {
+    body = cleanSpoken(mS[1].trim());
   } else if (mW) {
     body = cleanSpoken(t.replace(mW[0], '').trim());
+  } else if (/心\s*声/.test(t)) {
+    // 有「心声」字样却切不出分段：说明它把心里话和正文糊在一起了，
+    // 这种东西绝对不能当公开发言，宁可这一句作废
+    body = '';
   } else {
     body = cleanSpoken(t);
   }
 
+  // 最后一道保险：正文里还残留心声就切掉
+  if (body && /心\s*声/.test(body)) {
+    const head = body.split(/心\s*声/)[0].trim();
+    body = head.length >= 6 ? head : '';
+  }
+
   return {
     whisper: whisper ? clip(whisper.replace(/\s+/g, ''), 36) : '',
-    body: body || t
+    body: body
   };
 }
 
@@ -3560,6 +3579,7 @@ function msgSpeech(p, tag) {
   const wolf = (S && S.revealed && isWolfRole(p.role)) ? ' wolf' : '';
   const node = addNode('msg speech speaking' + wolf,
     '<div class="s-head">' +
+      avatarSVG(p.avatar, 26) +
       '<span class="s-seat">' + p.seat + '</span>' +
       '<span class="s-name">' + esc(p.name) + '</span>' +
       '<span class="s-tag">' + (tag || '发言') + '</span>' +
@@ -5017,13 +5037,24 @@ async function dayPhase(id) {
             '\n\n【再强调一遍】你上一遍把自己的身份说出来了，这一遍作废。你是狼人，必须假装好人重说：' +
             '不许出现"我是狼""我的队友""我们狼队"这类话，也不许点出队友的座位号。'));
         }
+        /* 切不出正文（心里话和发言糊在一起 / 整段在复述提示词）：重说一次 */
+        if (!sp.body) {
+          godMsg(p.name + ' 这轮没拆出正文，已要求重说', '⚠️');
+          sp = splitSpeak(await askSpeech(
+            '\n\n【重来】你上一遍把心里话和公开发言混在一起了。严格按格式重说：' +
+            '先【心声】一句话，再【发言】一段话，发言里不许出现"心声"两个字。'));
+        }
+        if (!sp.body) sp = { body: '（张了张嘴，没说出话）', whisper: sp.whisper };
         parts2 = sp;
       }
       card.set(parts2.body, parts2.whisper);
       p.mem.push('第 ' + S.round + ' 天我说：' + clip(parts2.body.replace(/\s+/g, ' '), 90));
       p.lastWhisper = parts2.whisper;
       if (parts2.whisper) p.whispers.push({ round: S.round, text: parts2.whisper });
-      S.log.push({ round: S.round, kind: 'speech', seat: p.seat, name: p.name, text: parts2.body, whisper: parts2.whisper });
+      // 只把真正的公开发言写进记录：占位话和残留心声都不该进公开上下文
+      if (parts2.body && !/^（/.test(parts2.body) && !/心\s*声/.test(parts2.body)) {
+        S.log.push({ round: S.round, kind: 'speech', seat: p.seat, name: p.name, text: parts2.body, whisper: parts2.whisper });
+      }
 
       /* 狼人自爆：翻牌出局，白天到此为止（真人狼在发言框里输【自爆】也能触发） */
       wantExplode = isWolfRole(p.role) && S.round >= 2 &&
@@ -5105,7 +5136,7 @@ async function dayPhase(id) {
             spec: p.spec
           });
           const sp = splitSpeak(text);
-          body.set(sp.body, sp.whisper);
+          body.set(sp.body || '（想把话说清楚，但没说出来）', sp.whisper);
           if (sp.whisper) p.whispers.push({ round: S.round, text: sp.whisper });
         }
       } catch (e) {
