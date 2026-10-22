@@ -3364,22 +3364,50 @@ const TTS = (() => {
   function skip() { stop(); }
 
   function test() {
-    toast('🔊 正在测试语音播放…', 3000);
-    // 先测试原生TTS
-    if (window.speechSynthesis) {
-      console.log('使用原生TTS测试');
-      speakNative('语音播报测试，你能听到我说话吗？', {});
-      // 1.5秒后检查是否在播放
+    if (!window.speechSynthesis) {
+      toast('❌ 浏览器不支持语音合成，用百度TTS', 4000);
+      baiduSpeak('语音播报测试，你能听到我说话吗？', {});
+      return true;
+    }
+
+    const voices = window.speechSynthesis.getVoices();
+    const zhVoices = voices.filter(v => /zh|cmn|chinese|中文|普通话/i.test(v.lang + v.name));
+    console.log('所有语音:', voices.map(v => v.name + '(' + v.lang + ')'));
+    console.log('中文语音:', zhVoices.map(v => v.name + '(' + v.lang + ')'));
+
+    toast('🔊 共' + voices.length + '个语音，中文' + zhVoices.length + '个。正在播放测试…', 5000);
+
+    // 先试原生TTS
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance('语音播报测试，你能听到我说话吗？');
+      utter.rate = rate;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.lang = 'zh-CN';
+      if (zhVoices.length > 0) utter.voice = zhVoices[0];
+      utter.onstart = () => console.log('原生TTS开始播放');
+      utter.onend = () => console.log('原生TTS结束');
+      utter.onerror = (e) => {
+        console.warn('原生TTS错误:', e);
+        toast('⚠️ 原生TTS出错:' + e.error + '，切换百度TTS', 4000);
+        setTimeout(() => baiduSpeak('语音播报测试，你能听到我说话吗？', {}), 500);
+      };
+      window.speechSynthesis.speak(utter);
+
+      // 2秒后检查是否真的在播放
       setTimeout(() => {
         if (!window.speechSynthesis.speaking) {
           console.log('原生TTS没在播放，切换百度TTS');
+          toast('⚠️ 原生TTS没出声，切换百度TTS', 4000);
           baiduSpeak('语音播报测试，你能听到我说话吗？', {});
         }
-      }, 1500);
-    } else {
-      console.log('浏览器不支持原生TTS，用百度TTS');
+      }, 2000);
+    } catch (e) {
+      console.warn('原生TTS失败:', e);
       baiduSpeak('语音播报测试，你能听到我说话吗？', {});
     }
+
     return true;
   }
 
