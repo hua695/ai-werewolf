@@ -1234,13 +1234,20 @@ body.player-view .whisper{display:none!important}
   .app{grid-template-columns:minmax(0,1fr) 340px}
   .panel.left{display:none}
 
-  /* stage 限宽居中：底图是竖构图，舞台越宽 cover 就放得越大，
-     限在 940px 里才跟原来三栏时的观感一致，两侧留一点剧场暗边 */
-  .stage{position:relative;max-width:940px;margin:0 auto;width:100%}
+  .stage{position:relative}
+  /* 背景只铺圆桌这一块（约 836px，和旧三栏里的中间栏几乎一样宽），
+     左边的记录栏用纯色面板——这样中间还是一整幅完整的牌桌画面 */
+  .stage-bg{left:264px}
   .feed{
     position:absolute;left:0;top:0;bottom:42px;width:264px;
-    padding:13px 11px 12px;
+    padding:0 11px 12px;
     border-right:1px solid var(--line);background:var(--ink-850);z-index:3;
+  }
+  .feed::before{
+    content:'对局记录';position:sticky;top:0;z-index:2;
+    display:block;padding:11px 2px 9px;margin-bottom:4px;
+    font-size:10.5px;letter-spacing:.2em;color:var(--text-3);font-weight:700;
+    background:linear-gradient(180deg,var(--ink-850) 72%,rgba(8,11,17,0));
   }
   .feed-inner{max-width:none}
   .statusbar{position:absolute;left:0;right:0;bottom:0;z-index:5}
@@ -1248,6 +1255,13 @@ body.player-view .whisper{display:none!important}
     display:block;position:absolute;left:264px;right:0;top:0;bottom:42px;z-index:2;
     overflow:hidden;
   }
+  /* 结局背景要盖满整个舞台，包括记录栏那一块 */
+  body.end-wolf .stage-bg,
+  body.end-good .stage-bg{left:0}
+  /* 首页：回到一整块画面，标题居中 */
+  body.home .stage-bg{left:0}
+  body.home .feed::before{display:none}
+  body.home .feed{padding:26px 28px 16px}
   /* 开局前：回到单栏，首页大标题占中间 */
   body.home .feed{position:relative;left:auto;top:auto;bottom:auto;width:auto;
     border-right:none;background:none;z-index:1}
@@ -1395,6 +1409,7 @@ body.is-day .rt-bubble .rb-body{color:#f2e9d8}
 @media (min-width:1181px){
   body.hud-hide .feed{display:none}
   body.hud-hide .round-table{left:0}
+  body.hud-hide .stage-bg{left:0}
 }
 
 /* ══════════ 响应式 ══════════ */
@@ -6796,6 +6811,10 @@ syncTtsUI(TTS.enabled);
 renderSeatEditor(null);
 renderSeats();
 CFG = readCfg();
+
+/* 页面刚打开：首页是静态的 hero，得手动打上 home 标记，
+   否则桌面端会按"对局中"的布局把记录栏拉出来，左侧空一块 */
+if ($('hero')) showHero();
 </script>
 </body>
 </html>
