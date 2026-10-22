@@ -50,6 +50,40 @@
   --ease:cubic-bezier(.2,.8,.2,1);
 }
 
+/* ══════════ 白天主题：暖白 ══════════
+   只换变量，200 多处引用自动跟着走。夜里是烛光暗调，白天是
+   阳光晒进木屋的暖白，金色加深保证浅底可读。 */
+body.is-day{
+  --ink-900:#f2ecdf;
+  --ink-850:#efe8da;
+  --ink-800:#eae2d2;
+  --ink-700:#e3dac8;
+  --ink-600:#d9cfba;
+  --ink-500:#cfc4ac;
+  --line:#d2c6ae;
+  --line-soft:#e0d7c3;
+  --text:#33291a;
+  --text-2:#5f5340;
+  --text-3:#8b7d63;
+
+  --blood:#b23a28;
+  --blood-dim:rgba(178,58,40,.13);
+  --gold:#9d742a;
+  --gold-dim:rgba(157,116,42,.15);
+  --moon:#3f6ea6;
+  --moon-dim:rgba(63,110,166,.12);
+  --ok:#2e7d5b;
+
+  --dim:#8b7d63;
+  --dim-2:#a3957a;
+  --border:#d2c6ae;
+  --bg:#f2ecdf;
+
+  --wolf:#b23a28;
+  --seer:#9d742a;
+  --witch:#7b52ab;
+}
+
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
@@ -251,29 +285,63 @@ body.is-day .brand-mark{
 @keyframes flashOut{0%{opacity:0}15%{opacity:1}100%{opacity:0}}
 
 /* ══════════ 场景底图 ══════════ */
+/* 昼夜双图交叉淡化：夜图和昼图各占一层伪元素，靠 opacity 切换，
+   这样 background-image 不能动画的限制就绕开了，衔接是真正的淡入淡出 */
 .stage-bg{
   position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;
-  background-image:url(assets/bg-night.jpg);
-  background-size:cover;background-position:center 24%;
-  opacity:.95;filter:saturate(1.02) contrast(1.01) brightness(1.1);
-  transition:opacity .8s var(--ease),filter .8s var(--ease),background-image .8s;
+}
+.stage.idle .stage-bg{opacity:1}
+.stage-bg::before,.stage-bg::after{
+  content:'';position:absolute;inset:0;background-size:cover;
+  transition:opacity 1.4s var(--ease),filter 1.4s var(--ease);
+}
+.stage-bg::before{
+  background-image:url(assets/bg-night.jpg);background-position:center 24%;
+  opacity:1;filter:saturate(1.02) contrast(1.01) brightness(1.1);
 }
 .stage-bg::after{
+  /* 白天不用照片，直接铺暖白纸面——用户要的是「暖白色调」，暗照片怎么提亮都不够白 */
+  background:
+    radial-gradient(130% 90% at 50% 0%,#fbf5e8,#f4ecdb 52%,#eadfc6);
+  opacity:0;filter:none;
+}
+body.is-day .stage-bg::before{opacity:0}
+body.is-day .stage-bg::after{opacity:1}
+/* 压场遮罩：夜里是冷黑，白天换暖棕，白天一眼就能看出来 */
+.stage-bg .shade{
+  position:absolute;inset:0;
+  transition:opacity 1.4s var(--ease);
+  opacity:1;
+}
+.stage-bg .shade::before{
   content:'';position:absolute;inset:0;
   background:
     radial-gradient(120% 66% at 50% 4%,rgba(8,11,17,.1),rgba(8,11,17,.42) 62%,rgba(6,9,14,.72)),
     linear-gradient(180deg,rgba(6,9,14,.03),rgba(6,9,14,.5) 78%);
+  transition:opacity 1.4s var(--ease);
+  opacity:1;
 }
-body.is-day .stage-bg{
-  background-image:url(assets/bg-day.jpg);
-  background-position:center 34%;
-  opacity:.72;filter:saturate(.85) brightness(1.12);
-}
-body.is-day .stage-bg::after{
+.stage-bg .shade::after{
+  content:'';position:absolute;inset:0;
+  /* 白天：暖白提亮纱罩，不再是压暗的黑纱 */
   background:
-    radial-gradient(120% 66% at 50% 4%,rgba(10,13,18,.24),rgba(9,12,17,.54) 62%,rgba(6,9,14,.8)),
-    linear-gradient(180deg,rgba(8,11,16,.2),rgba(6,9,14,.7) 78%);
+    radial-gradient(120% 66% at 50% 4%,rgba(255,250,238,.32),rgba(255,246,228,.22) 62%,rgba(252,243,224,.4)),
+    linear-gradient(180deg,rgba(255,248,233,.12),rgba(255,244,222,.38) 78%);
+  transition:opacity 1.4s var(--ease);
+  opacity:0;
 }
+body.is-day .stage-bg .shade::before{opacity:0}
+body.is-day .stage-bg .shade::after{opacity:1}
+/* 白天消息直接叠在暖白背景上，改用深色卡片保住浅字的对比度 */
+body.is-day .msg{
+  background:rgba(44,37,26,.87);
+  border-radius:12px;
+  padding:10px 14px;
+  box-shadow:0 2px 16px rgba(96,74,38,.18);
+}
+body.is-day .msg.phase{background:none;box-shadow:none;padding:34px 0 26px}
+body.is-day .msg.phase .p-main{color:#4a3c22}
+body.is-day .msg.phase .p-sub{color:#7a694a}
 .stage.idle .stage-bg{opacity:1}
 .stage.idle .stage-bg::after{background:linear-gradient(180deg,rgba(6,9,14,.66),rgba(6,9,14,.6) 46%,rgba(6,9,14,.92))}
 /* 底图上叠一层细噪点，压住塑料感 */
@@ -1286,7 +1354,7 @@ body.player-view .whisper{display:none!important}
   </aside>
 
   <main class="stage" id="stage">
-    <div class="stage-bg" id="stageBg"><span class="grain"></span></div>
+    <div class="stage-bg" id="stageBg"><span class="shade"></span><span class="grain"></span></div>
     <div class="curtain" id="curtain"><span class="curtain-text" id="curtainText"></span></div>
     <div class="kill-slash" id="killSlash"></div>
     <div class="fx" id="fx"></div>
@@ -1851,6 +1919,12 @@ function loadCfg() {
       BGM.setEnabled(!!c.bgm);
       const smb = $('smBgm');
       if (smb) smb.checked = !!c.bgm;
+    } else {
+      // 老版本存档里没有 bgm 字段：那时语音默认是关的，是旧默认值不是用户的选择，
+      // 这次按新默认（全开）来，顺手把新字段写回去，之后用户手动关就保持关。
+      TTS.setEnabled(true);
+      BGM.setEnabled(true);
+      saveCfg();
     }
     if (c.ttsRate) {
       TTS.setRate(c.ttsRate);
@@ -1901,6 +1975,18 @@ const META_ECHO = /(输出格式|格式要求|格式如下|字数|分两段|两�
 function metaEchoScore(text) {
   const hits = String(text || '').match(META_ECHO);
   return hits ? hits.length : 0;
+}
+
+/* 从思考里捞「正式答案」。思考型模型经常把要提交的输出写在推理末尾，
+   优先按【发言】标签取，取不到就拿最后一段（结论一般在最后）。
+   这只是降级手段——正文为空时总得给点东西，总比把整局中断强。 */
+function rescueFromThinking(reasoning) {
+  const r = String(reasoning || '').trim();
+  if (!r) return '';
+  const mS = r.match(/【发言】([\s\S]*)$/);
+  if (mS && mS[1].trim()) return mS[1].trim();
+  const paras = r.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  return paras.length ? paras[paras.length - 1] : '';
 }
 
 function trackUsage(u) {
@@ -1963,21 +2049,26 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
         : '';
       const content = stripThinking(rawContent);
 
-      // 只吐了思考没有正式回答：加大额度再问一次。
-      // 绝对不能拿思考当正文——那等于把「我是狼人、队友是 2 号」直接贴到公屏上。
+      // 只吐了思考没有正式回答：加大额度再问一次；重试用尽就从思考里捞答案。
+      // 绝对不能拿整段思考当正文——那等于把「我是狼人、队友是 2 号」直接贴到公屏上；
+      // 但也不能因为这个就中断对局，所以有 rescueFromThinking 兜底。
       if (!content) {
         if (attempt < 2) {
-          body.max_tokens = Math.min(2000, Math.max(600, body.max_tokens * 2));
+          body.max_tokens = Math.min(4000, Math.max(600, body.max_tokens * 2));
           await sleep(300);
           continue;
         }
-        throw new Error('模型只返回了思考过程，没给出正式回答' +
-          (reasoning ? '（额度被思考吃掉了，试试把发言长度调短）' : ''));
+        const rescued = rescueFromThinking(reasoning);
+        if (rescued) {
+          console.warn('模型只返回了思考，已从推理末尾提取答案');
+          return rescued;
+        }
+        throw new Error('模型连思考都没有返回，检查接口是否可用');
       }
       // 英文检测：如果输出主要是英文，重试一次并加强中文要求
       if (isMostlyEnglish(content) && attempt < 2) {
         body.messages[0].content = system + '\n\n【强制要求】你的所有输出必须是简体中文，绝对不能用英文。即使思考过程用英文，最终回答也必须全是中文。';
-        body.max_tokens = Math.min(2000, body.max_tokens * 2);
+        body.max_tokens = Math.min(4000, body.max_tokens * 2);
         continue;
       }
       // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
@@ -1986,7 +2077,7 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
       if (!content.includes('【发言】') && metaEchoScore(content) >= 2 && attempt < 2) {
         console.warn('检测到元叙述（' + metaEchoScore(content) + ' 处），重试一次');
         body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
-        body.max_tokens = Math.min(2000, body.max_tokens * 2);
+        body.max_tokens = Math.min(4000, body.max_tokens * 2);
         continue;
       }
       if (runId !== RUN) throw new StopGame();
@@ -2706,7 +2797,7 @@ async function lastWords(p, id, reason) {
     card.set('（没留下话）');
   }
   S.speaking = null; renderSeats();
-  await beat();
+  await speakGap();
 }
 
 /* ============================================================
@@ -2855,6 +2946,13 @@ function paceMs() {
 async function beat(ms) {
   const d = FAST ? 0 : (ms == null ? paceMs() : ms);
   if (d > 0) await sleep(d);
+}
+
+/* 语音开着时，等这句念完再推进到下一位——否则每句刚开口就被下一句掐掉。
+   语音关着或快进时等于普通 beat。上限 16 秒防个别模型卡死节奏。 */
+async function speakGap(ms) {
+  await beat(ms);
+  if (TTS.enabled) await TTS.waitDone(ms == null ? 16000 : Math.max(6000, ms * 4));
 }
 
 /* ============================================================
@@ -3143,16 +3241,22 @@ async function chooseSeat(p, runId, body, cands, spec, task) {
     spec: spec
   });
 
-  const text = await askOnce(body);
-  let seat = parseSeat(text, allowed);
-  if (seat != null) return { seat, text: String(text || '').trim() };
+  try {
+    const text = await askOnce(body);
+    let seat = parseSeat(text, allowed);
+    if (seat != null) return { seat, text: String(text).trim() };
 
-  const retry = body +
-    '\n\n【重来】上一次没有给出有效的座位号。这次只输出一个数字，从 ' +
-    allowed.join('、') + ' 里选一个，不要写任何别的内容。';
-  const text2 = await askOnce(retry);
-  seat = parseSeat(text2, allowed);
-  return { seat, text: String(text2 || '').trim() };
+    const retry = body +
+      '\n\n【重来】上一次没有给出有效的座位号。这次只输出一个数字，从 ' +
+      allowed.join('、') + ' 里选一个，不要写任何别的内容。';
+    const text2 = await askOnce(retry);
+    return { seat: parseSeat(text2, allowed), text: String(text2 || text).trim() };
+  } catch (e) {
+    // 一次调用失败别把整局打断：调用方都有随机兜底（狼刀/验人/守卫）或弃票（投票）
+    if (e instanceof StopGame) throw e;
+    console.warn('chooseSeat 调用失败，交给调用方兜底：' + (e && e.message));
+    return { seat: null, text: '' };
+  }
 }
 
 function topSeat(map) {
@@ -3598,14 +3702,22 @@ const SFX = (() => {
    加慢琶音；投票是低音脉动；终局播一段终止式就停。音量都很低，
    垫在环境音效和语音播报底下，不抢戏。
    ============================================================ */
+/* ============================================================
+   背景音乐：程序化合成的场景音序，不用任何外部音频文件。
+
+   老版本用持续低音垫，听感是嗡嗡一片，这版彻底去掉持续长音，
+   改成「八音盒」质感的单音序列：短促正弦 + 指数衰减，加一条
+   低反馈延迟做空间感。夜里是稀疏的 A 小调，白天是明快的 D 大调，
+   投票是低音脉动加半音摩擦，终局一段小终止式。音量都很低。
+   ============================================================ */
 const BGM = (() => {
   let ctx = null;
   let enabled = true;
   let scene = '';
   let master = null;
-  let nodes = [];     // 当前场景的持续音源，切场景时停
-  let timers = [];    // 场景内的随机点缀计时器
-  let vol = 1;        // 总闸（菜单里调低了就整体压）
+  let bus = null;     // 延迟回声总线
+  let timers = [];    // 音序器与脉动的计时器
+  let vol = 0.85;
 
   function ensure() {
     if (!enabled) return null;
@@ -3623,47 +3735,20 @@ const BGM = (() => {
   function stopScene(fade) {
     timers.forEach(clearInterval);
     timers = [];
-    const oldNodes = nodes;
-    nodes = [];
-    if (master) {
-      const m = master, c = ctx, f = fade || 0.8;
+    const oldMaster = master, oldBus = bus, c = ctx, f = fade || 0.6;
+    master = null; bus = null;
+    if (oldMaster && c) {
       try {
-        m.gain.cancelScheduledValues(c.currentTime);
-        m.gain.setValueAtTime(m.gain.value, c.currentTime);
-        m.gain.linearRampToValueAtTime(0.0001, c.currentTime + f);
+        oldMaster.gain.cancelScheduledValues(c.currentTime);
+        oldMaster.gain.setValueAtTime(oldMaster.gain.value, c.currentTime);
+        oldMaster.gain.linearRampToValueAtTime(0.0001, c.currentTime + f);
       } catch (e) { /* 忽略 */ }
-      setTimeout(() => {
-        oldNodes.forEach(n => { try { n.stop(); } catch (e) { /* 忽略 */ } });
-        try { m.disconnect(); } catch (e) { /* 忽略 */ }
-      }, f * 1000 + 120);
-      master = null;
+      setTimeout(() => { try { oldMaster.disconnect(); oldBus && oldBus.disconnect(); } catch (e) { /* 忽略 */ } }, f * 1000 + 150);
     }
   }
 
-  /* 持续长音：可挂一个慢 LFO 让它「呼吸」 */
-  function drone(freq, type, v, lfoRate, lfoDepth) {
-    const c = ctx;
-    const osc = c.createOscillator();
-    const g = c.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.value = freq;
-    g.gain.value = v;
-    if (lfoRate) {
-      const lfo = c.createOscillator();
-      const lg = c.createGain();
-      lfo.frequency.value = lfoRate;
-      lg.gain.value = lfoDepth || v * 0.5;
-      lfo.connect(lg).connect(g.gain);
-      lfo.start();
-      nodes.push(lfo);
-    }
-    osc.connect(g).connect(master);
-    osc.start();
-    nodes.push(osc);
-  }
-
-  /* 一次性点缀音 */
-  function ping(freq, dur, v, type) {
+  /* 八音盒质感的单音：快起慢衰，送一点回声 */
+  function note(freq, dur, v, type, echo) {
     const c = ctx;
     const t0 = c.currentTime;
     const osc = c.createOscillator();
@@ -3671,62 +3756,109 @@ const BGM = (() => {
     osc.type = type || 'sine';
     osc.frequency.value = freq;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.001, v), t0 + 0.03);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, v), t0 + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    osc.connect(g).connect(master);
+    osc.connect(g);
+    g.connect(master);
+    if (echo && bus) g.connect(bus);
     osc.start(t0);
-    osc.stop(t0 + dur + 0.05);
+    osc.stop(t0 + dur + 0.1);
   }
 
-  function fadeUp(sec) {
+  /* 低音闷响（投票脉动用） */
+  function thump(freq, v) {
+    const c = ctx;
+    const t0 = c.currentTime;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq * 1.5, t0);
+    osc.frequency.exponentialRampToValueAtTime(freq, t0 + 0.09);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, v), t0 + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+    osc.connect(g).connect(master);
+    osc.start(t0);
+    osc.stop(t0 + 0.3);
+  }
+
+  function buildOut() {
+    master = ctx.createGain();
     master.gain.setValueAtTime(0.0001, ctx.currentTime);
-    master.gain.linearRampToValueAtTime(vol, ctx.currentTime + sec);
+    master.gain.linearRampToValueAtTime(vol, ctx.currentTime + 1.2);
+    master.connect(ctx.destination);
+    bus = ctx.createGain();
+    bus.gain.value = 0.32;
+    const dl = ctx.createDelay(1.6);
+    dl.delayTime.value = 0.44;
+    const fb = ctx.createGain();
+    fb.gain.value = 0.32;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 1600;
+    bus.connect(dl);
+    dl.connect(lp);
+    lp.connect(fb);
+    fb.connect(dl);
+    lp.connect(master);
+  }
+
+  /* 音序器：按列表循环出音 */
+  function sequencer(seq, gapMs, opts) {
+    let i = 0;
+    const step = () => {
+      const f = seq[i % seq.length];
+      note(f, opts.dur, opts.v, opts.type || 'sine', true);
+      if (opts.flourish && Math.random() < 0.22) {
+        setTimeout(() => note(f * 2, opts.dur * 0.7, opts.v * 0.5, 'sine', true), gapMs * 0.35);
+      }
+      i++;
+    };
+    step();
+    timers.push(setInterval(step, gapMs));
   }
 
   function sceneNight() {
-    fadeUp(2.2);
-    drone(55, 'triangle', 0.5, 0.07, 0.2);       // A1 底噪
-    drone(82.4, 'sine', 0.2, 0.05, 0.09);        // 五度
-    drone(110, 'sine', 0.09, 0.09, 0.05);
-    timers.push(setInterval(() => {               // 远处的钟，稀稀落落
-      if (Math.random() < 0.4) ping(pick([440, 523.3, 659.3]) , 2.6, 0.028, 'sine');
-    }, 9000));
+    buildOut();
+    // A 小调五声，慢，稀疏，偶尔跳高八度
+    sequencer([220, 261.6, 329.6, 392, 440, 392, 329.6], 3400,
+      { dur: 2.4, v: 0.05, type: 'sine', flourish: true });
   }
 
   function sceneDay() {
-    fadeUp(1.6);
-    drone(146.8, 'sine', 0.15, 0.08, 0.05);      // D3
-    drone(220, 'sine', 0.09, 0.06, 0.035);       // A3
-    drone(293.7, 'triangle', 0.045, 0.1, 0.018); // D4
-    const seq = [293.7, 370, 440, 370];          // D 大调慢琶音
-    let i = 0;
-    timers.push(setInterval(() => ping(seq[i++ % seq.length], 1.5, 0.03, 'sine'), 2700));
+    buildOut();
+    // D 大调五声，明快一点
+    sequencer([293.7, 329.6, 440, 493.9, 587.3, 440, 392], 2200,
+      { dur: 1.4, v: 0.045, type: 'triangle', flourish: true });
   }
 
   function sceneVote() {
-    fadeUp(0.9);
-    drone(110, 'sine', 0.09, 0.35, 0.04);
-    drone(116.5, 'sine', 0.09, 0.35, 0.04);      // 两根微差拍，越听越紧
-    timers.push(setInterval(() => ping(70, 0.16, 0.075, 'sine'), 1150));   // 低音脉动
+    buildOut();
+    timers.push(setInterval(() => thump(78, 0.09), 1050));
+    // 高位半音来回摩擦，音量很小
+    let hi = false;
+    timers.push(setInterval(() => {
+      hi = !hi;
+      note(hi ? 523.3 : 554.4, 0.8, 0.018, 'sine', true);
+    }, 2100));
   }
 
   function sceneOver(win) {
-    fadeUp(0.4);
-    const seq = win ? [261.6, 329.6, 392, 523.3] : [220, 196, 174.6, 146.8];
-    seq.forEach((f, i) => setTimeout(() => ping(f, 1.1, 0.05, 'triangle'), i * 270));
+    const seq = win
+      ? [392, 440, 523.3, 659.3, 784, 659.3]
+      : [330, 311.1, 293.7, 246.9, 220];
+    buildOut();
+    seq.forEach((f, i) => setTimeout(() => note(f, win ? 1.3 : 1.6, 0.06, 'triangle', true), i * (win ? 240 : 320)));
   }
 
   function setScene(name) {
     const next = enabled ? (name || '') : '';
     if (next === scene) return;
     scene = next;
-    stopScene(0.8);
+    stopScene(0.7);
     if (!next) return;
     const c = ensure();
     if (!c) return;
-    master = c.createGain();
-    master.gain.value = vol;
-    master.connect(c.destination);
     if (next === 'night') sceneNight();
     else if (next === 'day') sceneDay();
     else if (next === 'vote') sceneVote();
@@ -3738,13 +3870,13 @@ const BGM = (() => {
     setScene,
     setEnabled(v) {
       enabled = !!v;
-      if (!enabled) { scene = ''; stopScene(0.6); }
+      if (!enabled) { scene = ''; stopScene(0.5); }
     },
     get enabled() { return enabled; },
-    get scene() { return scene; },
-    setVolume(v) { vol = Math.min(1, Math.max(0, Number(v) || 0)); if (master) master.gain.value = vol; }
+    get scene() { return scene; }
   };
 })();
+
 
 /* ============================================================
    语音播报（TTS）
@@ -3828,8 +3960,11 @@ const TTS = (() => {
   function stopAll() { seq++; silence(); }
 
   function busy() {
+    if (audio && !audio.paused) return true;
+    // 原生合成判死之后，synth 自报的状态不可信（无声设备会一直说自己在播）
+    if (nativeOff) return false;
     const s = window.speechSynthesis;
-    return !!((s && (s.speaking || s.pending)) || (audio && !audio.paused));
+    return !!(s && (s.speaking || s.pending));
   }
 
   /* 在线语音：走 Pages 代理绕开跨域 */
@@ -3887,8 +4022,10 @@ const TTS = (() => {
         };
         utter.onerror = toOnline;
         synth.speak(utter);
+        // 有些环境 speak() 静默失败（无中文音色、无声设备），真在播的话 onstart 早就来了，
+        // 所以只要 900ms 内没等到 onstart 就判失效，别管 synth 自己报的 speaking 状态
         watchdog = setTimeout(() => {
-          if (!settled && !synth.speaking && !synth.pending) toOnline();
+          if (!settled) toOnline();
         }, NATIVE_WAIT);
       } catch (e) {
         toOnline();
@@ -3953,6 +4090,14 @@ const TTS = (() => {
     get supported() { return canNative() || canOnline(); },
     get speaking() { return busy(); },
     speak, stop, skip, test,
+    /* 等当前这条播完再走，防止下一句发言一开口就把上一句掐死 */
+    async waitDone(maxMs) {
+      const t0 = Date.now();
+      while (busy() && Date.now() - t0 < (maxMs || 14000)) {
+        if (typeof FAST !== 'undefined' && FAST) break;
+        await sleep(180);
+      }
+    },
     speech(text, name) {
       if (!enabled || (scope !== 'all' && scope !== 'speech')) return false;
       return speak((name ? name + '说：' : '') + text);
@@ -4491,27 +4636,34 @@ async function nightPhase(id) {
       /* 标准：解药用完就听不到刀口；自救只有第一夜可以 */
       const knowsKill = !witch.saveUsed;
       const canSelfSave = S.round === 1;
-      const ans = await callLLM({
-        system: sysPrompt(witch, { task: 'witch' }),
-        user: [
-          '【女巫行动】',
-          knowsKill
-            ? '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。'
-            : '你的解药已经用完，今晚听不到刀口，只能决定要不要用毒药。',
-          '解药：' + (witch.saveUsed ? '已用完' : '未使用') + '；毒药：' + (witch.poisonUsed ? '已用完' : '未使用') + '。',
-          '同一夜只能用一瓶药。' +
-            (canSelfSave ? '如果今晚被袭击的是你自己，只有这第一夜可以自救。' : '从第二夜起解药不能用来救自己。'),
-          '可毒对象：' + poisonList.map(s => s.seat + ' 号 ' + s.name).join('、'),
-          '',
-          '回复格式只能是下面三种之一：',
-          '救',
-          '毒 座位号',
-          '过'
-        ].join('\n'),
-        runId: id,
-        maxTokens: 64,
-        spec: witch.spec
-      });
+      let ans = '';
+      try {
+        ans = await callLLM({
+          system: sysPrompt(witch, { task: 'witch' }),
+          user: [
+            '【女巫行动】',
+            knowsKill
+              ? '今晚 ' + killSeat + ' 号 ' + (victim ? victim.name : '') + ' 遭到狼人袭击。'
+              : '你的解药已经用完，今晚听不到刀口，只能决定要不要用毒药。',
+            '解药：' + (witch.saveUsed ? '已用完' : '未使用') + '；毒药：' + (witch.poisonUsed ? '已用完' : '未使用') + '。',
+            '同一夜只能用一瓶药。' +
+              (canSelfSave ? '如果今晚被袭击的是你自己，只有这第一夜可以自救。' : '从第二夜起解药不能用来救自己。'),
+            '可毒对象：' + poisonList.map(s => s.seat + ' 号 ' + s.name).join('、'),
+            '',
+            '回复格式只能是下面三种之一：',
+            '救',
+            '毒 座位号',
+            '过'
+          ].join('\n'),
+          runId: id,
+          maxTokens: 64,
+          spec: witch.spec
+        });
+      } catch (e) {
+        // 模型这一夜失灵就当她没用过药，别让整局中断
+        if (e instanceof StopGame) throw e;
+        ans = '过';
+      }
       const raw = ans.replace(/[\s。．.]/g, '');
       const noSave = /不救|不用解药|保留|不解/.test(raw);
       const poisonCands = poisonList.map(s => s.seat);
@@ -4789,7 +4941,7 @@ async function dayPhase(id) {
     S.speaking = null; renderSeats();
     scrollFeed(true);
     if (wantExplode) { await beat(700); break; }
-    await beat();
+    await speakGap();
   }
   setProgress(0.84);
 
@@ -4842,7 +4994,7 @@ async function dayPhase(id) {
         body.set('（未完成辩护）');
       }
       S.speaking = null; renderSeats();
-      await beat();
+      await speakGap();
     }
     const pkVotes = await runVote(id, pkSeats);
     result = await resolveVote(pkVotes, id, true);
