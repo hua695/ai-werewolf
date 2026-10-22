@@ -547,6 +547,18 @@ body.home .stage-bg::after{background:linear-gradient(180deg,rgba(6,9,14,.66),rg
   100%{opacity:1;transform:scale(1);filter:blur(0)}
 }
 
+/* 唱票时每票一行，紧凑一点，别把记录栏撑爆 */
+.msg.vote-line{
+  display:flex;align-items:center;gap:6px;
+  padding:2px 8px;margin-bottom:2px;
+  background:none;border:none;box-shadow:none;
+  font-size:11.5px;color:var(--text-2);
+}
+.msg.vote-line .vl-arrow{color:var(--text-3);font-size:10px}
+.msg.vote-line .vl-to{color:var(--gold);font-weight:600}
+body.is-day .msg.vote-line{color:#6b5f49}
+body.is-day .msg.vote-line .vl-to{color:#8a6410}
+
 /* 投票结果动画 */
 .votebox{animation:voteIn .4s var(--ease)}
 @keyframes voteIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -3978,14 +3990,19 @@ function renderTable() {
 
 /* 投票箭头：从每个投票者拉一条弧线到被投者，票数聚在目标旁边。
    弧线朝圆心反方向鼓一点，避免所有线穿过桌子中央糊成一团。 */
-function drawVoteArrows() {
+function drawVoteArrows(subset) {
   const tbl = document.querySelector('.rt-table');
   if (!tbl || !S) return;
   const old = tbl.querySelector('.rt-arrows');
   if (old) old.remove();
 
-  const rec = [...S.log].reverse().find(l => l.kind === 'vote' && l.round === S.round);
-  if (!rec || !rec.picks || !rec.picks.length) return;
+  // subset 是唱票过程中已揭示的那几票；不传就取本轮的完整记录
+  let picks = subset;
+  if (!picks) {
+    const rec = [...S.log].reverse().find(l => l.kind === 'vote' && l.round === S.round);
+    picks = rec && rec.picks;
+  }
+  if (!picks || !picks.length) return;
 
   const W = tbl.clientWidth;
   const H = tbl.clientHeight;
@@ -4010,7 +4027,7 @@ function drawVoteArrows() {
   const cy = H / 2;
   const tails = {};
 
-  rec.picks.forEach(pick => {
+  picks.forEach(pick => {
     const a = pos[pick.from];
     const b = pos[typeof pick.to === 'number' ? pick.to : -1];
     if (!a || !b || pick.to == null) return;
@@ -6268,7 +6285,34 @@ async function runVote(id, restrict) {
   return picks.filter(Boolean);
 }
 
+/* 逐票唱票：一票一票念出来，圆桌上对应的线亮一条、票数涨一格。
+   狼人杀最有戏的就是这几秒——票型慢慢聚拢，突然反超，然后平票 PK。
+   快进或减少动效时跳过，直接出结果。 */
+async function singVotes(picks, id) {
+  if (FAST || REDUCED) return;
+  const tbl = document.querySelector('.rt-table');
+  const canShow = !!(tbl && tbl.offsetHeight);
+  const list = picks.slice();
+
+  for (let i = 0; i < list.length; i++) {
+    await gate(id);
+    const v = list[i];
+    const from = seatOf(v.from);
+    if (!from) continue;
+    const toP = v.to == null ? null : seatOf(v.to);
+    addNode('msg vote-line',
+      '<span class="vl-from">' + v.from + ' 号 ' + esc(from.name) + '</span>' +
+      '<span class="vl-arrow">→</span>' +
+      '<span class="vl-to">' + (toP ? v.to + ' 号 ' + esc(toP.name) : '弃票') + '</span>');
+    SFX.tick();
+    if (canShow) drawVoteArrows(list.slice(0, i + 1));
+    await beat(Math.max(150, Math.min(380, paceMs() * 0.46)));
+  }
+}
+
 async function resolveVote(picks, id, isPK) {
+  await singVotes(picks, id);   // 先唱票，再出票型
+
   const tally = new Map();
   picks.forEach(v => { if (v.to != null) tally.set(v.to, (tally.get(v.to) || 0) + 1); });
 
