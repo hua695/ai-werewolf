@@ -4065,8 +4065,23 @@ const TTS = (() => {
     if (voiceCache) return voiceCache;
     const pick = () => {
       const vs = window.speechSynthesis.getVoices() || [];
-      return vs.filter(v => /^zh([-_]|$)/i.test(v.lang || '') ||
-        /(zh|cmn|chinese|中文|普通话)/i.test((v.lang || '') + ' ' + (v.name || '')));
+      const zh = vs.filter(v => {
+        const lang = String(v.lang || '').toLowerCase();
+        const name = String(v.name || '');
+        const isZh = /^zh([-_]|$)/.test(lang) || /(chinese|中文|普通话|国语)/i.test(name);
+        if (!isZh) return false;
+        // 粤语和港台口音听起来不是一回事，别分给角色，用户听不懂
+        if (/^zh[-_]hk/.test(lang) || /粤|cantonese|hong ?kong/i.test(name)) return false;
+        return true;
+      });
+      // 普通话优先，其次台湾国语，最后其他
+      const rank = v => {
+        const l = String(v.lang || '').toLowerCase();
+        if (/^zh[-_]cn/.test(l)) return 0;
+        if (/^zh[-_]tw/.test(l)) return 1;
+        return 2;
+      };
+      return zh.sort((a, b) => rank(a) - rank(b));
     };
     voiceCache = pick();
     if (!voiceCache.length && !voicesHooked && window.speechSynthesis.addEventListener) {
@@ -4240,6 +4255,19 @@ const TTS = (() => {
     return true;
   }
 
+  /* 开局前在后台探一次边缘 TTS 是否可用，别让第一句发言承担探测延迟。
+     实测云端出口会被微软按 IP 风控拒掉（403），所以这里只是留个开关，
+     一旦哪天通了就自动启用。 */
+  async function probeEdge() {
+    if (edgeOk != null) return edgeOk;
+    if (typeof window.fetch !== 'function' || location.protocol === 'file:') { edgeOk = false; return false; }
+    try {
+      const r = await fetch('/api/tts?text=' + encodeURIComponent('嗯') + '&voice=zh-CN-XiaoxiaoNeural', { method: 'GET' });
+      edgeOk = r.ok;
+    } catch (e) { edgeOk = false; }
+    return edgeOk;
+  }
+
   function speak(text, opts) {
     const o = opts || {};
     if (!enabled && !o.force) return false;
@@ -4340,6 +4368,7 @@ const TTS = (() => {
     },
     setNarr(v) { narrOn = !!v; },
     get narr() { return narrOn; },
+    probeEdge,
     setMode(v) { ttsMode = ['full', 'brief', 'key'].includes(v) ? v : 'full'; },
     get mode() { return ttsMode; },
     /* 供界面显示：本机有几个中文音色，决定角色声纹能拉开多少 */
@@ -5504,6 +5533,7 @@ async function gate(id) {
 
 async function startGame() {
   CFG = readCfg();
+  if (typeof TTS !== 'undefined') TTS.probeEdge();   // 后台探一次，不阻塞开局
   const n = Number($('boardSel').value) || 9;
   const specs = assignSpecs(n);
   if (!specs) {
