@@ -3307,65 +3307,53 @@ const TTS = (() => {
   let rate = 1;
   let scope = 'speech';
   let currentAudio = null;
-  let useBaidu = false; // 百度TTS备选方案
 
-  // 百度TTS接口（直接用https，不走代理）
+  // 优先用Web Speech API（浏览器内置，不需要网络请求）
+  function speakNative(text, opts) {
+    if (!window.speechSynthesis) return false;
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = opts.rate || rate;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.lang = 'zh-CN';
+      utter.onend = () => console.log('原生TTS播放结束');
+      utter.onerror = (e) => {
+        console.warn('原生TTS错误:', e);
+      };
+      window.speechSynthesis.speak(utter);
+      return true;
+    } catch (e) {
+      console.warn('原生TTS失败:', e);
+      return false;
+    }
+  }
+
+  // 百度TTS备用方案（通过Pages代理解决CORS）
   function baiduSpeak(text, opts) {
     if (!text) return;
-    const o = opts || {};
-    // 停止当前播放
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio = null;
-    }
-    // 截断过长文本
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     const shortText = text.slice(0, 200);
-    const spd = Math.round((o.rate || rate) * 4); // 百度语速0-9
-    const url = `https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent(shortText)}`;
-    const audio = new Audio(url);
+    const spd = Math.round((opts.rate || rate) * 4);
+    // 用Pages代理，避免CORS问题
+    const targetUrl = 'https://fanyi.baidu.com/gettts?lan=zh&text=' + encodeURIComponent(shortText) + '&spd=' + spd + '&source=web';
+    const url = '/api/proxy?target=' + encodeURIComponent(targetUrl);
+    const audio = new Audio();
     audio.volume = 1;
-    audio.play().catch((e) => {
-      console.warn('百度TTS播放失败:', e);
-      // 如果直接调用失败，再试代理
-      const proxyUrl = `/api/proxy?target=${encodeURIComponent(url)}`;
-      const audio2 = new Audio(proxyUrl);
-      audio2.volume = 1;
-      audio2.play().catch((e2) => {
-        console.warn('代理TTS也失败:', e2);
-      });
-      currentAudio = audio2;
-    });
+    audio.onerror = (e) => console.warn('百度TTS失败:', audio.error);
+    audio.src = url;
+    audio.play().catch((e) => console.warn('百度TTS播放被拦截:', e));
     currentAudio = audio;
   }
 
   function speak(text, opts) {
     if (!enabled || !text) return;
     const o = opts || {};
-
-    // 如果Web Speech API不可用，用百度TTS
-    if (!window.speechSynthesis || useBaidu) {
-      baiduSpeak(text, o);
-      return;
-    }
-
-    try { window.speechSynthesis.cancel(); } catch (e) {}
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = o.rate || rate;
-    utter.pitch = o.pitch || 1;
-    utter.volume = 1;
-    utter.lang = 'zh-CN';
-    utter.onerror = (e) => {
-      console.warn('TTS error:', e, '切换到百度TTS');
-      useBaidu = true;
-      baiduSpeak(text, o);
-    };
-    try {
-      window.speechSynthesis.speak(utter);
-    } catch (e) {
-      console.warn('TTS speak failed:', e, '切换到百度TTS');
-      useBaidu = true;
-      baiduSpeak(text, o);
-    }
+    // 优先用原生TTS
+    if (speakNative(text, o)) return;
+    // 原生不支持，用百度TTS
+    baiduSpeak(text, o);
   }
 
   function stop() {
@@ -3373,43 +3361,25 @@ const TTS = (() => {
     if (currentAudio) { currentAudio.pause(); currentAudio = null; }
   }
 
-  function skip() {
-    stop();
-  }
+  function skip() { stop(); }
 
   function test() {
-    // 最原始的同步播放测试，不加任何异步逻辑
-    toast('🔊 正在测试语音播放…如果10秒内没听到声音，说明浏览器不支持，请换Chrome浏览器打开', 6000);
-
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-
-    // 用百度翻译的TTS接口
-    const spd = Math.round(rate * 4);
-    const url = 'https://fanyi.baidu.com/gettts?lan=zh&text=' + encodeURIComponent('语音播报测试，你能听到我说话吗？') + '&spd=' + spd + '&source=web';
-    console.log('TTS URL:', url);
-
-    // 创建Audio元素，同步播放
-    const audio = new Audio();
-    audio.volume = 1;
-    audio.preload = 'auto';
-    audio.onplay = () => console.log('TTS播放开始');
-    audio.onended = () => console.log('TTS播放结束');
-    audio.onerror = (e) => {
-      console.error('TTS播放错误:', audio.error);
-      toast('❌ 播放失败，错误码:' + (audio.error ? audio.error.code : '未知') + '，建议换Chrome浏览器', 5000);
-    };
-    audio.src = url;
-
-    // 同步调用play()，在用户点击事件的调用栈里
-    const playPromise = audio.play();
-    if (playPromise) {
-      playPromise.catch((e) => {
-        console.error('play()被拦截:', e);
-        toast('❌ 浏览器拦截了音频播放，必须在用户点击后才能播放。建议换Chrome浏览器', 6000);
-      });
+    toast('🔊 正在测试语音播放…', 3000);
+    // 先测试原生TTS
+    if (window.speechSynthesis) {
+      console.log('使用原生TTS测试');
+      speakNative('语音播报测试，你能听到我说话吗？', {});
+      // 1.5秒后检查是否在播放
+      setTimeout(() => {
+        if (!window.speechSynthesis.speaking) {
+          console.log('原生TTS没在播放，切换百度TTS');
+          baiduSpeak('语音播报测试，你能听到我说话吗？', {});
+        }
+      }, 1500);
+    } else {
+      console.log('浏览器不支持原生TTS，用百度TTS');
+      baiduSpeak('语音播报测试，你能听到我说话吗？', {});
     }
-
-    currentAudio = audio;
     return true;
   }
 
@@ -3419,7 +3389,7 @@ const TTS = (() => {
     setRate(v) { rate = Number(v) || 1; },
     setScope(v) { scope = v; },
     get scope() { return scope; },
-    get supported() { return true; }, // 百度TTS兜底，总是支持
+    get supported() { return true; },
     speak, stop, skip, test,
     speech(text, name) {
       if (!enabled || (scope !== 'all' && scope !== 'speech')) return;
