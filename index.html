@@ -1998,6 +1998,20 @@ function trackUsage(u) {
   $('tokenText').innerHTML = 'Token <b>' + (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString() + '</b>';
 }
 
+/* 英文思维链泄漏：混元这类模型会把推理原文写进 content。
+   除了英文占比，再抓一批「只在跟自己辩论时」才会出现的词。 */
+const LEAK_WORDS = /\b(wait|hmm+|actually|let me|i think|i need|i should|instruction|the rule|means|point out|teammates?|regardless)\b/gi;
+
+function looksLikeThinking(text) {
+  const t = String(text || '');
+  if (!t) return false;
+  if (isMostlyEnglish(t)) return true;
+  const hits = (t.match(LEAK_WORDS) || []).length;
+  const cjk = (t.match(/[\u4e00-\u9fff]/g) || []).length;
+  // 英文辩论词密集、中文又很少 → 基本可以认定是思考，不是在说话
+  return hits >= 5 && cjk < t.length * 0.35;
+}
+
 async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
   const cfg = CFG;
   const s = spec || usablePool()[0] || null;
@@ -2066,11 +2080,15 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
         }
         throw new Error('模型连思考都没有返回，检查接口是否可用');
       }
-      // 英文检测：如果输出主要是英文，重试一次并加强中文要求
-      if (isMostlyEnglish(content) && attempt < 2) {
-        body.messages[0].content = system + '\n\n【强制要求】你的所有输出必须是简体中文，绝对不能用英文。即使思考过程用英文，最终回答也必须全是中文。';
-        body.max_tokens = Math.min(4000, body.max_tokens * 2);
-        continue;
+      // 思考泄漏：英文推理、或满嘴「Wait/Hmm/instruction」在跟自己辩论。
+      // 重试两次仍不收敛，就宁可这一句不说，也绝不让思维链贴到牌桌上。
+      if (looksLikeThinking(content)) {
+        if (attempt < 2) {
+          body.messages[0].content = system + '\n\n【强制】只输出角色要说的话，必须是简体中文。不要输出任何推理、分析、英文思考，也不要讨论规则。';
+          body.max_tokens = Math.min(4000, body.max_tokens * 2);
+          continue;
+        }
+        throw new Error('模型连续输出思考过程，这一句已跳过');
       }
       // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
       // 「所以」「但是」「我们」「【发言】」是正常发言和正常格式，不能算进去，
@@ -2129,6 +2147,7 @@ function safeColor(c, fb) {
 
 function normalizeAvatar(a, name, i) {
   a = a || {};
+  if (a.img) return { img: a.img };   // 预置头像图（assets/avatars），不再画 SVG
   const fb = AV_FALLBACK[(i || 0) % AV_FALLBACK.length];
   return {
     shape: ['circle', 'square', 'hex'].includes(a.shape) ? a.shape : 'circle',
@@ -2139,11 +2158,39 @@ function normalizeAvatar(a, name, i) {
   };
 }
 
+/* ============================================================
+   预置头像池
+   12 张人物头像按性别分组，一局里尽量不重复；以后不再让模型画头像。
+   ============================================================ */
+const AVATAR_FILES = {
+  male: [2, 3, 5, 7, 9, 10, 12].map(n => 'assets/avatars/avatar' + n + '.jpg'),
+  female: [1, 4, 6, 8, 11].map(n => 'assets/avatars/avatar' + n + '.jpg')
+};
+
+/* 发牌器：同性别内洗牌后依次发，发完再洗一遍，保证同局尽量不撞头像 */
+function makeAvatarDealer() {
+  const decks = {
+    male: shuffle(AVATAR_FILES.male.slice()),
+    female: shuffle(AVATAR_FILES.female.slice())
+  };
+  const idx = { male: 0, female: 0 };
+  return gender => {
+    const g = gender === 'female' ? 'female' : 'male';   // 性别不明按男池（池子更大）
+    if (idx[g] >= decks[g].length) { decks[g] = shuffle(AVATAR_FILES[g].slice()); idx[g] = 0; }
+    return { img: decks[g][idx[g]++] };
+  };
+}
+
 let AV_SEQ = 0;
 function avatarSVG(a, size) {
   const v = normalizeAvatar(a);
-  const id = 'av' + (++AV_SEQ);
   const s = size || 34;
+  if (v.img) {
+    return '<img class="ava" src="' + v.img + '" alt="" ' +
+      'style="width:' + s + 'px;height:' + s + 'px;border-radius:50%;object-fit:cover;display:block;' +
+      'background:#0c1018;box-shadow:0 0 0 1px rgba(217,169,75,.18)">';
+  }
+  const id = 'av' + (++AV_SEQ);
   let shapeEl;
   if (v.shape === 'square') shapeEl = '<rect x="1" y="1" width="98" height="98" rx="28" fill="url(#' + id + ')"/>';
   else if (v.shape === 'hex') shapeEl = '<polygon points="50,2 95,27 95,73 50,98 5,73 5,27" fill="url(#' + id + ')"/>';
@@ -2206,13 +2253,10 @@ async function genIdentity(seat, spec, id, taken) {
     '2. persona 写 45 到 80 字，是普通人的职业与性格，能自然带出说话习惯',
     '3. style 一句话，20 字内，写口吻要求',
     '4. mbti 四位大写或空字符串，age 在 20 到 55 之间',
-    '5. avatar 里有 shape（circle / square / hex）、bg、fg、accent 三个颜色、glyph 一个汉字',
-    '6. 颜色要衬在深色背景上，fg 与 bg 明度差要大',
+    '5. gender 只能是 male 或 female 之一，按名字和人设的气质来定',
     '',
     '格式：',
-    '{"name":"","gender":"male|female|nonbinary","age":30,"mbti":"INTJ",',
-    '"persona":"","style":"",',
-    '"avatar":{"shape":"circle","bg":"#2b3550","fg":"#e8eefb","accent":"#4e6a99","glyph":"砚"}}'
+    '{"name":"","gender":"male|female","age":30,"mbti":"INTJ","persona":"","style":""}'
   ].join('\n');
 
   let data = null;
@@ -2236,7 +2280,7 @@ async function genIdentity(seat, spec, id, taken) {
     mbti: (data && data.mbti) ? String(data.mbti).toUpperCase().slice(0, 4) : '',
     persona: (data && data.persona) ? String(data.persona).slice(0, 120) : '普通人，表达克制，习惯先听完再开口。',
     style: (data && data.style) ? String(data.style).slice(0, 40) : '平和，短句，偶尔反问。',
-    avatar: normalizeAvatar(data && data.avatar, name, seat)
+    avatar: null            // 头像由调用方按性别从预置池里发，不再让模型画
   };
 }
 
@@ -2990,8 +3034,8 @@ function outputContract(task, wolf) {
         '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。'
       ];
       if (wolf) {
-        arr.push('这一段必须把自己说成好人。【发言】里不许出现"我是狼""我的队友""我们狼队"这类话，' +
-          '也不许点出队友的座位号——那等于当场把牌摊在桌上。');
+        arr.push('这一段必须把自己说成好人。你可以怀疑任何人，包括你的狼队友——把队友当靶子是允许的战术。' +
+          '唯一禁止的是宣告身份：不要说"我是狼""他是我队友""我们狼队"这类话。');
       }
       return arr;
     }
@@ -3101,6 +3145,7 @@ function sysPrompt(p, opts) {
       '用第一人称中文口语，像真人坐在牌桌上，带着你这个人的脾气和习惯。',
       '全程简体中文，一个英文单词都不要出现。',
       '只输出你要说的话本身：不要写思考过程，不要解释你为什么这么说，不要提格式、要求、字数。',
+      '不要在回答里分析、复述、讨论我给你的任何规则。规则只是边界，不是题目，直接说话。',
       '不要用标题、编号列表、括号补充。',
       '提到别人用「座位号 + 名字」，例如 3 号苏晚。',
       '要有立场：给出判断、依据，以及你现在最怀疑谁，不要只复读别人说过的话。',
@@ -4381,10 +4426,11 @@ function initGame(seats, specs) {
 }
 
 /* ============================================================
-   开局前：让每家模型给自己起名、写人设、画头像
+   开局前：让每家模型给自己起名、写人设（头像从预置池按性别发）
    ============================================================ */
 async function genIdentities(id) {
   const list = S.seats.filter(s => !s.human);
+  const dealAvatar = makeAvatarDealer();   // 本局头像发牌器，按性别发
   let done = 0;
   setProgress(0.02);
   setStatus('各家模型正在挑名字、写人设…', true);
@@ -4396,7 +4442,7 @@ async function genIdentities(id) {
     s.name = info.name;
     s.persona = info.persona;
     s.style = info.style;
-    s.avatar = info.avatar;
+    s.avatar = dealAvatar(info.gender);
     s.gender = info.gender;
     s.age = info.age;
     s.mbti = info.mbti;
@@ -4871,12 +4917,14 @@ async function dayPhase(id) {
       parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
         '把第几夜验了谁、什么结果报出来——好人只有靠这个才能把票合到一起。跳不跳、什么时候跳，你自己判断。');
     }
-    /* 狼队战术：悍跳与自爆都是标准打法 */
+    /* 狼队战术：悍跳与被查杀后的自爆 */
     if (isWolfRole(p.role) && S.round >= 2) {
-      parts.push('【狼队战术】如果有人跳了预言家报查验：跳的人若是你的队友，帮他抬票；' +
-        '若是好人，可以考虑悍跳预言家反咬——编一套自己的查验记录，但要编得像，别和公开事实矛盾。');
-      parts.push('【自爆选项】你也可以翻牌自爆：发言时只输出【自爆】两个字，你会立即出局并直接进入天黑，' +
-        '跳过今天剩余的发言和投票。只有当你已经被公开查杀、今天必死时才值得用。');
+      parts.push('【狼队战术】有人跳预言家报查验时：跳的人若是你队友，帮他抬票；' +
+        '若是好人，可以悍跳反咬——编一套自己的查验记录，别和公开事实矛盾。');
+      if (wasCheckedPublicly(p.seat)) {
+        parts.push('【自爆】你已经被人公开点名查杀了，今天很可能被投出去。' +
+          '这种情况可以只输出【自爆】两个字翻牌，直接进入天黑，打断他们的讨论；也可以照常发言，你自己权衡。');
+      }
     }
     parts.push('输出两段，严格按格式，不要多写：');
     parts.push('【心声】一句不超过 18 字的真实想法');
@@ -4937,8 +4985,14 @@ async function dayPhase(id) {
       }
     } catch (e) {
       if (e instanceof StopGame) throw e;
-      card.set('（发言人卡顿，本轮没有发言）');
-      msgError(p.name + ' 发言失败：' + e.message);
+      if (/思考过程/.test(e.message || '')) {
+        // 模型只吐思维链：这一句作废，别把英文推理贴到桌上
+        card.set('（这轮卡了壳，没组织好语言）');
+        godMsg(p.name + ' 的回答全是思考过程，已丢弃', '⚠️');
+      } else {
+        card.set('（发言人卡顿，本轮没有发言）');
+        msgError(p.name + ' 发言失败：' + e.message);
+      }
     }
 
     S.speaking = null; renderSeats();
@@ -5044,8 +5098,13 @@ async function dayPhase(id) {
   await beat();
 }
 
-function speechOrder() {
-  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
+/* 有没有人在公开发言里点名查杀了这个座位（「验了 4 号是狼」这类说法） */
+function wasCheckedPublicly(seat) {
+  const re = new RegExp('(验|查)[^。！？]{0,6}' + seat + '\\s*号[^。！？]{0,8}狼');
+  return (S.log || []).some(l => l.kind === 'speech' && l.seat !== seat && re.test(String(l.text || '')));
+}
+
+function speechOrder() {  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
   if (!alive.length) return [];
   let start = 0;
   if (S.lastDeathSeat != null) {
