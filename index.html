@@ -333,6 +333,62 @@ body.is-day .stage-bg::after{opacity:1}
 }
 body.is-day .stage-bg .shade::before{opacity:0}
 body.is-day .stage-bg .shade::after{opacity:1}
+
+/* 结局背景：狼人胜/好人胜各一张，淡入盖在昼夜背景之上 */
+.stage-bg .end-bg{
+  position:absolute;inset:0;opacity:0;pointer-events:none;
+  background-size:cover;background-position:center 32%;
+  transition:opacity 1.4s var(--ease);
+}
+body.end-wolf .stage-bg .end-bg{
+  opacity:1;
+  background-image:url(assets/bg/win-wolf.jpg);
+}
+body.end-good .stage-bg .end-bg{
+  opacity:1;
+  background-image:url(assets/bg/win-villager.jpg);
+}
+/* 两张结局图本身足够有戏，压场遮罩淡一点，别再糊一层黑 */
+body.end-wolf .stage-bg .shade,
+body.end-good .stage-bg .shade{opacity:.35}
+body.end-wolf .stage-bg .shade::before,
+body.end-wolf .stage-bg .shade::after,
+body.end-good .stage-bg .shade::before,
+body.end-good .stage-bg .shade::after{opacity:0}
+
+/* 结局浮层：胜负信息居中压在背景上 */
+.end-banner{
+  position:absolute;left:0;right:0;top:24%;z-index:6;
+  display:flex;justify-content:center;pointer-events:none;
+  opacity:0;transform:translateY(10px);
+  animation:ebIn .9s .2s var(--ease) forwards;
+}
+@keyframes ebIn{to{opacity:1;transform:none}}
+.end-banner .eb-inner{
+  text-align:center;padding:20px 44px;border-radius:16px;
+  background:rgba(9,11,17,.74);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  border:1px solid rgba(217,169,75,.34);
+  box-shadow:0 18px 60px rgba(0,0,0,.45);
+}
+.end-banner.good .eb-inner{border-color:rgba(125,167,224,.45)}
+.end-banner .eb-title{
+  font-family:var(--serif);font-size:30px;letter-spacing:.22em;text-indent:.22em;
+  color:var(--gold);font-weight:700;
+}
+.end-banner.good .eb-title{color:#a8c6ee}
+.end-banner .eb-sub{margin-top:8px;font-size:12px;color:var(--text-2);letter-spacing:.08em}
+.end-banner .eb-btn{
+  pointer-events:auto;display:inline-block;margin-top:16px;cursor:pointer;
+  padding:7px 22px;border-radius:999px;font-size:12.5px;letter-spacing:.12em;
+  color:var(--gold);border:1px solid rgba(217,169,75,.5);background:rgba(217,169,75,.08);
+  transition:background .2s,transform .2s;
+}
+.end-banner .eb-btn:hover{background:rgba(217,169,75,.18);transform:translateY(-1px)}
+.end-banner.good .eb-btn{color:#a8c6ee;border-color:rgba(125,167,224,.55);background:rgba(125,167,224,.1)}
+/* 结局时把消息流压暗，让胜利画面透出来；复盘仍可滚动查看 */
+body.is-over .feed-inner{opacity:.26;transition:opacity 1s var(--ease)}
+body.is-over .statusbar{opacity:.5}
 /* 白天消息直接叠在暖白背景上，改用深色卡片保住浅字的对比度 */
 body.is-day .msg{
   background:rgba(44,37,26,.87);
@@ -1371,7 +1427,7 @@ body.player-view .whisper{display:none!important}
   </aside>
 
   <main class="stage" id="stage">
-    <div class="stage-bg" id="stageBg"><span class="shade"></span><span class="grain"></span></div>
+    <div class="stage-bg" id="stageBg"><span class="shade"></span><span class="end-bg"></span><span class="grain"></span></div>
     <div class="curtain" id="curtain"><span class="curtain-text" id="curtainText"></span></div>
     <div class="kill-slash" id="killSlash"></div>
     <div class="fx" id="fx"></div>
@@ -5742,9 +5798,31 @@ async function startGame() {
   }
 }
 
+/* 结局浮层：胜负 + 天数 + token，居中压在胜利背景上 */
+function showEndBanner(goodWin) {
+  const old = document.getElementById('endBanner');
+  if (old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'endBanner';
+  el.className = 'end-banner ' + (goodWin ? 'good' : 'wolf');
+  const tokens = (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString();
+  el.innerHTML =
+    '<div class="eb-inner">' +
+      '<div class="eb-title">' + (goodWin ? '好人阵营胜利' : '狼人阵营胜利') + '</div>' +
+      '<div class="eb-sub">共进行 ' + S.round + ' 天 · 消耗 ' + tokens + ' token</div>' +
+      '<div class="eb-btn" id="ebReveal">查看复盘</div>' +
+    '</div>';
+  $('stage').appendChild(el);
+  const btn = el.querySelector('#ebReveal');
+  if (btn) btn.addEventListener('click', () => openReveal());
+}
+
 function finishGame() {
   S.revealed = true;
   BGM.setScene(S.winner === 'good' ? 'over-win' : 'over-lose');
+  // 结局背景：狼人胜 / 好人胜 各一张
+  document.body.classList.toggle('end-good', S.winner === 'good');
+  document.body.classList.toggle('end-wolf', S.winner !== 'good');
   renderSeats();
   updateAlive();
 
@@ -5760,10 +5838,9 @@ function finishGame() {
   const goodWin = S.winner === 'good';
   clearCurtain();
   if (goodWin) SFX.win(); else SFX.lose();
-  addNode('msg banner ' + (goodWin ? 'good' : 'wolf'),
-    '<div class="b-title">' + (goodWin ? '好人阵营胜利' : '狼人阵营胜利') + '</div>' +
-    '<div class="b-sub">共进行 ' + S.round + ' 天 · 消耗 ' +
-      (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString() + ' token · 筹码 ' + BET.chips + '</div>');
+  // 结局信息做成浮层，别埋在消息流里——胜利背景才是这一屏的主角
+  showEndBanner(goodWin);
+  document.body.classList.add('is-over');
 
   setStage('', '对局结束', '');
   setPhasePill('over', '对局结束');
@@ -5789,7 +5866,7 @@ function finishGame() {
   }
 
   scrollFeed(true);
-  setTimeout(() => openReveal(), 1100);
+  // 不自动弹复盘：结局背景和胜负才是这一屏的重点，复盘交给浮层上的按钮
 }
 
 /* ============================================================
@@ -6023,6 +6100,11 @@ function resetUI() {
   $('exportBtn').disabled = true;
   $('stage').className = 'stage';
   document.body.classList.remove('is-day');
+  document.body.classList.remove('end-good');
+  document.body.classList.remove('end-wolf');
+  document.body.classList.remove('is-over');
+  const eb = document.getElementById('endBanner');
+  if (eb) eb.remove();
   cancelAsk();
   clearCurtain();
   setProgress(0);
