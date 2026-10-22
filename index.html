@@ -290,7 +290,7 @@ body.is-day .brand-mark{
 .stage-bg{
   position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;
 }
-.stage.idle .stage-bg{opacity:1}
+body.home .stage-bg{opacity:1}
 .stage-bg::before,.stage-bg::after{
   content:'';position:absolute;inset:0;background-size:cover;
   transition:opacity 1.4s var(--ease),filter 1.4s var(--ease);
@@ -399,8 +399,8 @@ body.is-day .msg{
 body.is-day .msg.phase{background:none;box-shadow:none;padding:34px 0 26px}
 body.is-day .msg.phase .p-main{color:#4a3c22}
 body.is-day .msg.phase .p-sub{color:#7a694a}
-.stage.idle .stage-bg{opacity:1}
-.stage.idle .stage-bg::after{background:linear-gradient(180deg,rgba(6,9,14,.66),rgba(6,9,14,.6) 46%,rgba(6,9,14,.92))}
+body.home .stage-bg{opacity:1}
+body.home .stage-bg::after{background:linear-gradient(180deg,rgba(6,9,14,.66),rgba(6,9,14,.6) 46%,rgba(6,9,14,.92))}
 /* 底图上叠一层细噪点，压住塑料感 */
 .stage-bg .grain{
   position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;
@@ -1234,7 +1234,9 @@ body.player-view .whisper{display:none!important}
   .app{grid-template-columns:minmax(0,1fr) 340px}
   .panel.left{display:none}
 
-  .stage{position:relative}
+  /* stage 限宽居中：底图是竖构图，舞台越宽 cover 就放得越大，
+     限在 940px 里才跟原来三栏时的观感一致，两侧留一点剧场暗边 */
+  .stage{position:relative;max-width:940px;margin:0 auto;width:100%}
   .feed{
     position:absolute;left:0;top:0;bottom:42px;width:264px;
     padding:13px 11px 12px;
@@ -1247,10 +1249,10 @@ body.player-view .whisper{display:none!important}
     overflow:hidden;
   }
   /* 开局前：回到单栏，首页大标题占中间 */
-  .stage.idle .feed{position:relative;left:auto;top:auto;bottom:auto;width:auto;
+  body.home .feed{position:relative;left:auto;top:auto;bottom:auto;width:auto;
     border-right:none;background:none;z-index:1}
-.stage.idle .round-table{display:none}
-.stage.idle .feed-inner{max-width:740px;margin:0 auto}
+body.home .round-table{display:none}
+body.home .feed-inner{max-width:740px;margin:0 auto}
 /* 首页大标题在舞台里居中，不跟着记录栏挤在左侧 */
 .stage > .hero{
   position:absolute;inset:0;display:flex;flex-direction:column;
@@ -1591,19 +1593,18 @@ body.is-day .rt-bubble .rb-body{color:#f2e9d8}
     <div class="roster" id="roster"></div>
     <div class="round-table" id="roundTable"></div>
     <div class="feed" id="feed">
-      <div class="feed-inner" id="feedInner">
-        <div class="hero" id="hero">
-          <h1>AI 狼人杀</h1>
-          <p>DeepSeek、豆包、Kimi、GLM、Qwen 同坐一桌，<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>
-          <div class="hero-chips">
-            <span class="hero-chip">多家模型混战</span>
-            <span class="hero-chip">AI 自造人设</span>
-            <span class="hero-chip">心声与押注</span>
-            <span class="hero-chip">平票 PK</span>
-          </div>
-          <div class="hero-arrow">先把密钥填进「配置」，点开始，剩下的交给它们 <span>→</span></div>
-        </div>
+      <div class="feed-inner" id="feedInner"></div>
+    </div>
+    <div class="hero" id="hero">
+      <h1>AI 狼人杀</h1>
+      <p>DeepSeek、豆包、Kimi、GLM、Qwen 同坐一桌，<br>每人一个名字、一副脾气，各自盘算怎么活到天亮。</p>
+      <div class="hero-chips">
+        <span class="hero-chip">多家模型混战</span>
+        <span class="hero-chip">AI 自造人设</span>
+        <span class="hero-chip">心声与押注</span>
+        <span class="hero-chip">平票 PK</span>
       </div>
+      <div class="hero-arrow">先把密钥填进「配置」，点开始，剩下的交给它们 <span>→</span></div>
     </div>
     <div class="statusbar" role="status" aria-live="polite">
       <span class="sb-dot" id="sbDot"></span>
@@ -4992,8 +4993,7 @@ function heartbeat(duration) {
 
 function hideHero() {
   const h = $('hero');
-  const st = $('stage');
-  if (st) st.classList.remove('idle');
+  document.body.classList.remove('home');
   if (!h) return;
   h.style.transition = 'opacity .35s, transform .35s';
   h.style.opacity = '0';
@@ -5002,9 +5002,9 @@ function hideHero() {
 }
 
 function showHero() {
+  // 首页那块静态 hero 现在直接在 stage 里，这里只负责切到 idle 布局
+  document.body.classList.add('home');
   if ($('hero')) return;
-  const st = $('stage');
-  if (st) st.classList.add('idle');
   const wrap = document.createElement('div');
   wrap.className = 'hero';
   wrap.id = 'hero';
