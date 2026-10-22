@@ -1896,6 +1896,14 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
         body.max_tokens = Math.min(800, body.max_tokens * 2);
         continue;
       }
+      // 元叙述检测：如果输出里有大量思考过程，重试一次并加强禁止要求
+      const metaCount = (content.match(/注意|要求|格式|输出|思考|分析|所以|但是|或者|可能|应该|需要|我们|你在|牌桌上|正式发言|合起来|字数|两段|【心声】|【发言】/g) || []).length;
+      if (metaCount > 8 && attempt < 2) {
+        console.warn('检测到元叙述太多(' + metaCount + '个)，重试一次');
+        body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
+        body.max_tokens = Math.min(800, body.max_tokens * 2);
+        continue;
+      }
       if (runId !== RUN) throw new StopGame();
       return content.trim();
     } catch (e) {
@@ -2792,6 +2800,7 @@ function sysPrompt(p, opts) {
     '表达要求',
     '用第一人称中文口语说话，像真人坐在牌桌上，带着你这个人的脾气和习惯。',
     '【重要】最终输出必须是简体中文，一个英文单词都不能有。即使你用其他语言思考，最终说出来的话也必须全是中文。',
+    '【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。不要说"我应该"、"注意要求"、"格式是"、"所以我要"这类话。把思考放在心里，只说最终要说的内容。',
     '不要出现元叙述，例如提到自己是 AI、模型、提示词或设定。',
     '不要使用标题、编号列表、括号补充。',
     '提到其他人时用座位号加名字，例如 3 号苏晚。',
