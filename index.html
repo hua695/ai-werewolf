@@ -1445,6 +1445,20 @@ body.home .feed-inner{max-width:740px;margin:0 auto}
   font-size:11.5px;color:var(--text-2);letter-spacing:.02em;white-space:nowrap;
   max-width:74px;overflow:hidden;text-overflow:ellipsis;
 }
+/* 身份直接挂在名字下面：小圆点标阵营，颜色标身份，一眼扫完一圈 */
+.rt-role{
+  display:inline-flex;align-items:center;gap:3px;
+  margin-top:1px;padding:0 5px;height:14px;border-radius:7px;
+  font-size:9.5px;letter-spacing:.02em;white-space:nowrap;
+  background:rgba(6,9,14,.55);
+}
+.rt-role .rt-camp-dot{width:4px;height:4px;border-radius:50%;background:currentColor;flex-shrink:0}
+.rt-seat[data-camp="wolf"] .rt-role{background:rgba(120,34,26,.55)}
+.rt-seat[data-camp="god"] .rt-role{background:rgba(96,72,24,.55)}
+.rt-seat.dead .rt-role{opacity:.5}
+body.is-day .rt-role{background:rgba(40,32,20,.72);color:#f0e4cc}
+body.is-day .rt-seat[data-camp="wolf"] .rt-role{background:rgba(122,32,26,.8)}
+body.is-day .rt-seat[data-camp="god"] .rt-role{background:rgba(104,76,20,.8)}
 .rt-seat.speaking .rt-ava{
   box-shadow:0 0 0 2.5px var(--gold),0 0 22px rgba(217,169,75,.45);
   transform:translateY(-4px) scale(1.06);
@@ -4069,6 +4083,14 @@ function renderTable() {
   const ry = 41;   // 纵向半径
   const phaseTxt = S.phase === 'night' ? '夜晚' : S.phase === 'day' ? '白天' : '准备中';
   const alive = S.seats.filter(s => s.alive).length;
+  /* 身份要不要摆在台面上：上帝视角、观战、或本人自己的牌。
+     参与模式且还活着时不显示别人的底牌——那是开挂。 */
+  const showRole = !!S.revealed || !secretsHidden();
+  const campOf = r => {
+    const m = ROLE_META[r];
+    if (!m) return '';
+    return m.camp === 'wolf' ? 'wolf' : m.camp === 'god' ? 'god' : 'villager';
+  };
 
   let html = '<div class="rt-wrap"><div class="rt-table">' +
     '<div class="rt-center"><b>第 ' + S.round + ' 天</b>' +
@@ -4083,11 +4105,19 @@ function renderTable() {
     if (!s.alive) cls.push('dead');
     if (S.speaking === s.seat) cls.push('speaking');
     if (s.human) cls.push('me');
+    const meta = ROLE_META[s.role] || { name: '', color: '#8b93a5' };
+    const mine = s.human && MODE === 'play';
+    const roleLine = (showRole || mine) && meta.name
+      ? '<div class="rt-role" data-camp="' + campOf(s.role) + '" style="color:' + meta.color + '">' +
+          '<i class="rt-camp-dot"></i>' + meta.name + '</div>'
+      : '';
     html += '<div class="' + cls.join(' ') + '" data-seat="' + s.seat + '" data-rt="' + s.seat + '"' +
+      ' data-camp="' + campOf(s.role) + '"' +
       ' style="left:' + x.toFixed(2) + '%;top:' + y.toFixed(2) + '%">' +
       '<div class="rt-ava">' + avatarSVG(s.avatar, 54) +
         '<span class="rt-no">' + s.seat + '</span></div>' +
       '<div class="rt-name">' + esc(s.name) + '</div>' +
+      roleLine +
     '</div>';
   });
 
