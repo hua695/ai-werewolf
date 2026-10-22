@@ -1347,6 +1347,9 @@ body.player-view .whisper{display:none!important}
         <div class="sm-item sm-sub" id="smTtsSkip" style="display:none">
           <button class="sm-btn" id="smSkip">跳过当前播报</button>
         </div>
+        <div class="sm-item sm-sub">
+          <span class="sm-hint" id="smVoiceText" style="font-size:11px;opacity:.65"></span>
+        </div>
         <div class="sm-item sm-sub" id="smTtsTest" style="display:none">
           <button class="sm-btn" id="smTest">🔊 测试语音</button>
         </div>
@@ -4280,6 +4283,11 @@ const TTS = (() => {
     get narr() { return narrOn; },
     setMode(v) { ttsMode = ['full', 'brief', 'key'].includes(v) ? v : 'full'; },
     get mode() { return ttsMode; },
+    /* 供界面显示：本机有几个中文音色，决定角色声纹能拉开多少 */
+    voiceInfo() {
+      const list = zhVoiceList();
+      return { count: list.length, names: list.map(v => String(v.name || '').replace(/^Microsoft\s*/i, '').replace(/\s*Online.*$/i, '')) };
+    },
     sys(text) {
       if (!enabled || scope !== 'all') return false;
       return speak(text, { rate: rate * 0.9, pitch: 0.92 });
@@ -5863,6 +5871,8 @@ $('soundBtn').addEventListener('click', (e) => {
   const menu = $('soundMenu');
   const show = menu.style.display === 'none' || !menu.style.display;
   menu.style.display = show ? 'block' : 'none';
+  // 每次打开都刷新一遍：音色列表是异步加载的，第一次打开时可能还是空
+  if (show) syncTtsUI(TTS.enabled);
 });
 document.addEventListener('click', (e) => {
   const wrap = document.querySelector('.sound-wrap');
@@ -5947,6 +5957,14 @@ function syncTtsUI(on) {
   if (cn && typeof TTS !== 'undefined') cn.checked = on && TTS.narr;
   const smm = $('smMode');
   if (smm && typeof TTS !== 'undefined') smm.value = TTS.mode;
+  const vt = $('smVoiceText');
+  if (vt && typeof TTS !== 'undefined') {
+    const info = TTS.voiceInfo();
+    vt.textContent = info.count
+      ? '本机中文音色 ' + info.count + ' 个：' + info.names.slice(0, 4).join('、') +
+        (info.count < 3 ? '（音色少，主要靠音高和语速区分角色）' : '')
+      : '本机暂无中文音色，将使用在线播报';
+  }
   const b = $('soundBtn');
   const sfxOn = (typeof SFX !== 'undefined') ? SFX.enabled : true;
   const bgmOn = (typeof BGM !== 'undefined') ? BGM.enabled : true;
