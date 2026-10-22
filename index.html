@@ -3306,59 +3306,63 @@ const TTS = (() => {
   let enabled = false;
   let rate = 1;
   let scope = 'speech';
-  let currentUtter = null;
-  let zhVoice = null;
-  let voicesReady = false;
+  let currentAudio = null;
+  let useBaidu = false; // 百度TTS备选方案
 
-  function pickVoice() {
-    if (!window.speechSynthesis) return null;
-    const voices = window.speechSynthesis.getVoices();
-    if (!voices.length) return null;
-    voicesReady = true;
-    // 优先选中文语音
-    zhVoice = voices.find(v => /zh|cmn|chinese/i.test(v.lang)) ||
-              voices.find(v => /zh|中文|普通话/i.test(v.name)) ||
-              voices[0] || null;
-    return zhVoice;
-  }
-
-  if (window.speechSynthesis) {
-    pickVoice();
-    window.speechSynthesis.onvoiceschanged = pickVoice;
-    // 某些浏览器需要等一下才能拿到voices
-    setTimeout(pickVoice, 500);
-    setTimeout(pickVoice, 1500);
+  // 百度TTS接口（通过Pages代理解决https和CORS）
+  function baiduSpeak(text, opts) {
+    if (!text) return;
+    const o = opts || {};
+    // 停止当前播放
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio = null;
+    }
+    // 截断过长文本
+    const shortText = text.slice(0, 200);
+    const spd = Math.round((o.rate || rate) * 4); // 百度语速0-9
+    const url = `/api/proxy?target=https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent(shortText)}`;
+    const audio = new Audio(url);
+    audio.volume = 1;
+    audio.play().catch((e) => {
+      console.warn('百度TTS播放失败:', e);
+    });
+    currentAudio = audio;
   }
 
   function speak(text, opts) {
-    if (!enabled || !window.speechSynthesis || !text) return;
+    if (!enabled || !text) return;
     const o = opts || {};
-    // 停止当前播报
+
+    // 如果Web Speech API不可用，用百度TTS
+    if (!window.speechSynthesis || useBaidu) {
+      baiduSpeak(text, o);
+      return;
+    }
+
     try { window.speechSynthesis.cancel(); } catch (e) {}
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = o.rate || rate;
     utter.pitch = o.pitch || 1;
     utter.volume = 1;
     utter.lang = 'zh-CN';
-    // 不指定voice，某些浏览器（小米浏览器等）指定voice反而不发声
     utter.onerror = (e) => {
-      console.warn('TTS error:', e);
+      console.warn('TTS error:', e, '切换到百度TTS');
+      useBaidu = true;
+      baiduSpeak(text, o);
     };
-    utter.onend = () => {
-      currentUtter = null;
-    };
-    currentUtter = utter;
-    // 直接播放，不要setTimeout（某些浏览器setTimeout会失去用户交互权限）
     try {
       window.speechSynthesis.speak(utter);
     } catch (e) {
-      console.warn('TTS speak failed:', e);
+      console.warn('TTS speak failed:', e, '切换到百度TTS');
+      useBaidu = true;
+      baiduSpeak(text, o);
     }
   }
 
   function stop() {
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    currentUtter = null;
+    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch(e) {} }
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
   }
 
   function skip() {
@@ -3366,58 +3370,22 @@ const TTS = (() => {
   }
 
   function test() {
-    if (!window.speechSynthesis) {
-      toast('❌ 浏览器不支持语音合成', 4000);
-      return false;
-    }
-    const voices = window.speechSynthesis.getVoices();
-    const zhVoices = voices.filter(v => /zh|cmn|chinese|中文|普通话/i.test(v.lang + v.name));
-    if (!voicesReady || !zhVoice) pickVoice();
-
-    const diag = `语音共${voices.length}个，中文${zhVoices.length}个`;
-    console.log('TTS诊断:', diag, zhVoices.map(v => v.name + '(' + v.lang + ')'));
-
-    if (voices.length === 0) {
-      toast('⚠️ 语音列表为空，2秒后再点一次', 4000);
-      setTimeout(pickVoice, 1000);
-      setTimeout(pickVoice, 2000);
-      return false;
-    }
-
-    // 先播一个在线音频测试，确认音量和浏览器音频功能正常
-    try {
-      const audio = new Audio('https://cdn.freesound.org/previews/415/415347_5126450-lq.mp3');
-      audio.volume = 0.5;
-      audio.play().then(() => {
-        toast('🔔 在线音频播放成功！说明音量正常，是语音合成的问题', 4000);
-      }).catch((e) => {
-        toast('❌ 在线音频也播不了:' + e.message + '，检查手机媒体音量', 5000);
-      });
-    } catch (e) {
-      console.warn('audio test failed:', e);
-    }
-
-    // 尝试播放Web Speech API
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance('语音播报测试，你能听到我说话吗？');
-      utter.rate = 1;
-      utter.pitch = 1;
-      utter.volume = 1;
-      utter.lang = 'zh-CN';
-      utter.onstart = () => console.log('TTS started');
-      utter.onend = () => console.log('TTS ended');
-      utter.onerror = (e) => {
-        console.error('TTS error:', e);
-        toast('❌ 播放失败:' + (e.error || 'unknown') + '，建议换Chrome浏览器', 5000);
-      };
-      window.speechSynthesis.speak(utter);
-      toast('🔊 正在播放…' + diag + '（先听到滴一声说明音量正常）', 4000);
-      return true;
-    } catch (e) {
-      toast('❌ 播放异常:' + e.message, 4000);
-      return false;
-    }
+    // 先测试百度TTS（更可靠）
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    const spd = Math.round(rate * 4);
+    const url = `/api/proxy?target=https://tts.baidu.com/text2audio?lan=zh&ie=UTF-8&spd=${spd}&text=${encodeURIComponent('语音播报测试，你能听到我说话吗？')}`;
+    const audio = new Audio(url);
+    audio.volume = 1;
+    audio.onplay = () => toast('🔊 正在用百度TTS播放测试语音…', 3000);
+    audio.onerror = (e) => {
+      console.error('百度TTS失败:', e);
+      toast('❌ 百度TTS也失败了，请检查网络', 4000);
+    };
+    audio.play().catch((e) => {
+      toast('❌ 播放失败:' + e.message, 4000);
+    });
+    currentAudio = audio;
+    return true;
   }
 
   return {
@@ -3426,7 +3394,7 @@ const TTS = (() => {
     setRate(v) { rate = Number(v) || 1; },
     setScope(v) { scope = v; },
     get scope() { return scope; },
-    get supported() { return !!window.speechSynthesis; },
+    get supported() { return true; }, // 百度TTS兜底，总是支持
     speak, stop, skip, test,
     speech(text, name) {
       if (!enabled || (scope !== 'all' && scope !== 'speech')) return;
