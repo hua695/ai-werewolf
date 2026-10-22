@@ -2317,101 +2317,188 @@ function looksLikeThinking(text) {
   return hits >= 5 && cjk < t.length * 0.35;
 }
 
+/* ============================================================
+   模型调用的故障接管
+   一家模型抽风不该把整局拖死。分两级处理：
+   ① 先判错误值不值得重试——密钥错、模型名不存在这类，重试三次还是同一个
+      结果，只会白白多等两轮超时；
+   ② 这一家彻底不行，就从模型池里换一家接管这个座位，对局继续往下走。
+   ============================================================ */
+const SPEC_SWAP = new WeakMap();   // 座位原本的 spec -> 顶替它的 spec
+const SPEC_DEAD = new Set();       // "provider|model"，本轮已判死，不再尝试
+const SWAP_SAID = new Set();       // 同一个模型只播报一次，免得九个人各喊一遍
+
+function specKey(s) {
+  return s ? String(s.provider || '') + '|' + String(s.model || '') : '';
+}
+
+/* 4xx 里只有 408/409/425/429 还值得重试；其余是密钥错、模型名不存在、
+   参数越界，第二次请求拿到的还是同一个结果，直接断开。 */
+function isFatalCallError(e) {
+  const m = String((e && e.message) || e || '');
+  const code = Number((m.match(/HTTP\s+(\d{3})/) || [])[1] || 0);
+  if (code) {
+    if (code === 408 || code === 409 || code === 425 || code === 429) return false;
+    return code >= 400 && code < 500;
+  }
+  return /模型池为空|缺少接口地址|API Key 是空的/.test(m);
+}
+
+function noteSpecSwap(from, to) {
+  const k = specKey(from);
+  if (SWAP_SAID.has(k)) return;
+  SWAP_SAID.add(k);
+  const line = '「' + specLabel(from) + '」这次没接上，本局由「' + specLabel(to) + '」替它坐这个位置';
+  if (typeof msgSys === 'function' && typeof S !== 'undefined' && S) msgSys(line);
+  else if (typeof toast === 'function') toast(line);
+}
+
 async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
   const cfg = CFG;
-  const s = spec || usablePool()[0] || null;
-  if (!s || !s.model) throw new Error('模型池为空，先填一个模型名');
-  if (!s.key && !cfg.allowNoKey) throw new Error('这一家的 API Key 是空的');
+  const origin = spec || null;
 
-  const meta = PROVIDERS[s.provider] || PROVIDERS.custom;
-  const base = String(s.base || meta.base || '').replace(/\/+$/, '');
-  if (!base) throw new Error('这一家缺少接口地址');
+  // 座位原配的模型已经被判死，就直接从池子里挑一个还能用的上来
+  let lead = origin ? (SPEC_SWAP.get(origin) || origin) : null;
+  if (lead && SPEC_DEAD.has(specKey(lead))) lead = null;
+  if (!lead) lead = usablePool().find(p => !SPEC_DEAD.has(specKey(p))) || null;
 
-  const body = {
-    model: s.model,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user }
-    ],
-    temperature: cfg.temp,
-    max_tokens: maxTokens,
-    stream: false
-  };
+  // 候选链：原配优先，后面跟池子里其余几家，去重并剔除已判死的，最多试三家
+  const seen = new Set();
+  const chain = [lead].concat(usablePool()).filter(s => {
+    if (!s || !s.model) return false;
+    const k = specKey(s);
+    if (seen.has(k) || SPEC_DEAD.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 3);
+  if (!chain.length) throw new Error('模型池为空，先填一个模型名');
 
-  let lastErr = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (runId !== RUN) throw new StopGame();
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), cfg.timeout);
-    try {
-      const res = await fetch(base + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + (s.key || 'ollama')
-        },
-        body: JSON.stringify(body),
-        signal: ctrl.signal
-      });
-      clearTimeout(timer);
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        throw new Error('HTTP ' + res.status + ' ' + clip(txt, 160));
-      }
-      const data = await res.json();
-      trackUsage(data.usage);
-      const msg = data.choices && data.choices[0] && data.choices[0].message;
-      const rawContent = msg && typeof msg.content === 'string' ? msg.content : '';
-      // 各家叫法不一样：reasoning_content / reasoning / thinking
-      const reasoning = msg
-        ? (['reasoning_content', 'reasoning', 'thinking']
-            .map(k => msg[k]).find(v => typeof v === 'string' && v.trim()) || '')
-        : '';
-      const content = stripThinking(rawContent);
-
-      // 只吐了思考没有正式回答：加大额度再问一次；重试用尽就从思考里捞答案。
-      // 绝对不能拿整段思考当正文——那等于把「我是狼人、队友是 2 号」直接贴到公屏上；
-      // 但也不能因为这个就中断对局，所以有 rescueFromThinking 兜底。
-      if (!content) {
-        if (attempt < 2) {
-          body.max_tokens = Math.min(4000, Math.max(600, body.max_tokens * 2));
-          await sleep(300);
-          continue;
+  /* 在一家模型上把一句请求打完：内部仍有三次尝试，
+     但遇到 4xx 硬错立刻抛出，交给外层换人。 */
+  const attemptOn = async (sp, base) => {
+    const body = {
+      model: sp.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      temperature: cfg.temp,
+      max_tokens: maxTokens,
+      stream: false
+    };
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (runId !== RUN) throw new StopGame();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), cfg.timeout);
+      try {
+        const res = await fetch(base + '/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (sp.key || 'ollama')
+          },
+          body: JSON.stringify(body),
+          signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          throw new Error('HTTP ' + res.status + ' ' + clip(txt, 160));
         }
-        const rescued = rescueFromThinking(reasoning);
-        if (rescued) {
-          console.warn('模型只返回了思考，已从推理末尾提取答案');
-          return rescued;
+        const data = await res.json();
+        trackUsage(data.usage);
+        const msg = data.choices && data.choices[0] && data.choices[0].message;
+        const rawContent = msg && typeof msg.content === 'string' ? msg.content : '';
+        // 各家叫法不一样：reasoning_content / reasoning / thinking
+        const reasoning = msg
+          ? (['reasoning_content', 'reasoning', 'thinking']
+              .map(k => msg[k]).find(v => typeof v === 'string' && v.trim()) || '')
+          : '';
+        const content = stripThinking(rawContent);
+
+        // 只吐了思考没有正式回答：加大额度再问一次；重试用尽就从思考里捞答案。
+        // 绝对不能拿整段思考当正文——那等于把「我是狼人、队友是 2 号」直接贴到公屏上；
+        // 但也不能因为这个就中断对局，所以有 rescueFromThinking 兜底。
+        if (!content) {
+          if (attempt < 2) {
+            body.max_tokens = Math.min(4000, Math.max(600, body.max_tokens * 2));
+            await sleep(300);
+            continue;
+          }
+          const rescued = rescueFromThinking(reasoning);
+          if (rescued) {
+            console.warn('模型只返回了思考，已从推理末尾提取答案');
+            return rescued;
+          }
+          throw new Error('模型连思考都没有返回，检查接口是否可用');
         }
-        throw new Error('模型连思考都没有返回，检查接口是否可用');
-      }
-      // 思考泄漏：英文推理、或满嘴「Wait/Hmm/instruction」在跟自己辩论。
-      // 重试两次仍不收敛，就宁可这一句不说，也绝不让思维链贴到牌桌上。
-      if (looksLikeThinking(content)) {
-        if (attempt < 2) {
-          body.messages[0].content = system + '\n\n【强制】只输出角色要说的话，必须是简体中文。不要输出任何推理、分析、英文思考，也不要讨论规则。';
+        // 思考泄漏：英文推理、或满嘴「Wait/Hmm/instruction」在跟自己辩论。
+        // 重试两次仍不收敛，就宁可这一句不说，也绝不让思维链贴到牌桌上。
+        // 例外是结构化输出：身份卡的 JSON 键名本来就是英文，英文字母占比能过半，
+        // 按「英文化思维」去判会把好端端的 JSON 判掉，起名退化成「玩家N」。
+        const structured = /^[\s]*[{[]/.test(content) && /"[A-Za-z_]+"\s*:/.test(content);
+        if (!structured && looksLikeThinking(content)) {
+          if (attempt < 2) {
+            body.messages[0].content = system + '\n\n【强制】只输出角色要说的话，必须是简体中文。不要输出任何推理、分析、英文思考，也不要讨论规则。';
+            body.max_tokens = Math.min(4000, body.max_tokens * 2);
+            continue;
+          }
+          throw new Error('模型连续输出思考过程，这一句已跳过');
+        }
+        // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
+        // 「所以」「但是」「我们」「【发言】」是正常发言和正常格式，不能算进去，
+        // 否则一句长一点的发言就会被误判，白白重试两次。
+        if (!structured && !content.includes('【发言】') && metaEchoScore(content) >= 2 && attempt < 2) {
+          console.warn('检测到元叙述（' + metaEchoScore(content) + ' 处），重试一次');
+          body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
           body.max_tokens = Math.min(4000, body.max_tokens * 2);
           continue;
         }
-        throw new Error('模型连续输出思考过程，这一句已跳过');
+        if (runId !== RUN) throw new StopGame();
+        return content;
+      } catch (e) {
+        clearTimeout(timer);
+        if (runId !== RUN) throw new StopGame();
+        lastErr = e;
+        if (isFatalCallError(e)) throw e;   // 硬错不必再烧时间
+        if (attempt < 2) await sleep(700 * (attempt + 1));
       }
-      // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
-      // 「所以」「但是」「我们」「【发言】」是正常发言和正常格式，不能算进去，
-      // 否则一句长一点的发言就会被误判，白白重试两次。
-      if (!content.includes('【发言】') && metaEchoScore(content) >= 2 && attempt < 2) {
-        console.warn('检测到元叙述（' + metaEchoScore(content) + ' 处），重试一次');
-        body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
-        body.max_tokens = Math.min(4000, body.max_tokens * 2);
-        continue;
-      }
-      if (runId !== RUN) throw new StopGame();
-      return content;
-    } catch (e) {
-      clearTimeout(timer);
-      if (runId !== RUN) throw new StopGame();
-      lastErr = e;
-      if (attempt < 2) await sleep(700 * (attempt + 1));
     }
+    throw lastErr || new Error('请求失败');
+  };
+
+  let lastErr = null;
+  for (const sp of chain) {
+    if (runId !== RUN) throw new StopGame();
+    if (!sp.key && !cfg.allowNoKey) {
+      lastErr = new Error('这一家的 API Key 是空的');
+      SPEC_DEAD.add(specKey(sp));
+      continue;
+    }
+    const meta = PROVIDERS[sp.provider] || PROVIDERS.custom;
+    const base = String(sp.base || meta.base || '').replace(/\/+$/, '');
+    if (!base) {
+      lastErr = new Error('这一家缺少接口地址');
+      SPEC_DEAD.add(specKey(sp));
+      continue;
+    }
+
+    let content = '';
+    try {
+      content = await attemptOn(sp, base);
+    } catch (e) {
+      if (e instanceof StopGame) throw e;
+      lastErr = e;
+      if (isFatalCallError(e)) SPEC_DEAD.add(specKey(sp));
+      continue;
+    }
+
+    if (lead && sp !== lead) {
+      if (origin) SPEC_SWAP.set(origin, sp);
+      noteSpecSwap(lead, sp);
+    }
+    return content;
   }
   throw lastErr || new Error('请求失败');
 }
@@ -3499,8 +3586,14 @@ function outputContract(task, wolf) {
         '轮到你白天发言。严格只输出两段，不要多写别的：',
         '【心声】不超过 18 字，写你此刻真实的盘算。观众看得到，桌上其他人看不到。' +
           (wolf ? '可以暴露你真实的算计。' : '可以不体面，也可以怂。'),
-        '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。'
+        '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。',
+        '这一段必须做到三件事：',
+        '一、点名。至少对一个人下判断，写成「几号 + 名字」，说清你信他还是不信他、依据是什么。泛泛而谈不算发言。',
+        '二、接话。前一个人刚说过什么，你要么顺着推一步，要么直接不同意；不要把他说过的话换个说法再讲一遍。',
+        '三、收尾。最后一句给出你这一轮的态度：投谁，或者暂时留着谁。'
       ];
+      arr.push('如果你上一轮已经被点到名，先用一句话回应那个质疑，再讲别人。' +
+        '同一个比喻、同一种开场、同一句口头禅不要连着用两轮，桌上的人会听腻。');
       if (wolf) {
         arr.push('这一段必须把自己说成好人。你可以怀疑任何人，包括你的狼队友——把队友当靶子是允许的战术。' +
           '唯一禁止的是宣告身份：不要说"我是狼""他是我队友""我们狼队"这类话。');
