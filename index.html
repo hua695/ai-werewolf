@@ -73,7 +73,7 @@ button{font-family:inherit}
 .topbar{
   height:56px;display:flex;align-items:center;gap:18px;padding:0 18px;
   background:var(--ink-800);border-bottom:1px solid var(--line);
-  position:relative;z-index:30;overflow:hidden;
+  position:relative;z-index:30;overflow:visible;
 }
 .topbar::after{
   content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
@@ -5018,6 +5018,12 @@ $('tabConfig').addEventListener('click', () => {
    启动
    ============================================================ */
 loadCfg();
+// 同步声音菜单状态
+$('smSfx').checked = SFX.enabled;
+$('smTts').checked = TTS.enabled;
+$('smTtsOpts').style.display = TTS.enabled ? 'flex' : 'none';
+$('smTtsSkip').style.display = TTS.enabled ? 'flex' : 'none';
+$('smRate').value = TTS.rate;
 renderSeatEditor(null);
 renderSeats();
 CFG = readCfg();
