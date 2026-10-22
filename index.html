@@ -1325,10 +1325,10 @@ body.player-view .whisper{display:none!important}
         <div class="sm-item sm-sub" id="smTtsOpts" style="display:none">
           <label class="sm-label">语速</label>
           <select class="sm-sel" id="smRate">
-            <option value="0.8">慢</option>
-            <option value="1" selected>正常</option>
-            <option value="1.2">快</option>
-            <option value="1.5">很快</option>
+            <option value="0.9">慢</option>
+            <option value="1.3" selected>正常</option>
+            <option value="1.7">快</option>
+            <option value="2">很快</option>
           </select>
         </div>
         <div class="sm-item sm-sub" id="smTtsSkip" style="display:none">
@@ -1521,10 +1521,10 @@ body.player-view .whisper{display:none!important}
           <div class="field">
             <label>语音语速</label>
             <select class="sel" id="ttsRate">
-              <option value="0.8">慢</option>
-              <option value="1" selected>正常</option>
-              <option value="1.2">快</option>
-              <option value="1.5">很快</option>
+              <option value="0.9">慢</option>
+              <option value="1.3" selected>正常</option>
+              <option value="1.7">快</option>
+              <option value="2">很快</option>
             </select>
           </div>
           <div class="field">
@@ -1927,7 +1927,7 @@ function loadCfg() {
       BGM.setEnabled(true);
       saveCfg();
     }
-    if (c.ttsRate) {
+    if (c.ttsRate && c.bgm != null) {   // 老存档没有 bgm 字段，那时的 1.0 是旧默认，别盖掉新语速
       TTS.setRate(c.ttsRate);
       const sel = $('ttsRate');
       if (sel) sel.value = c.ttsRate;
@@ -3894,7 +3894,7 @@ const TTS = (() => {
   const BAIDU_SPD = 5;      // 百度语速基准，1 慢 15 快
 
   let enabled = true;       // 语音播报默认开，老用户存过关就保持关
-  let rate = 1;
+  let rate = 1.3;           // 默认语速偏快一点，原生合成的 1.0 听起来太端着
   let pitch = 1;
   let scope = 'speech';
   let utter = null;         // 当前原生播报
@@ -4103,7 +4103,7 @@ const TTS = (() => {
     },
     speech(text, name) {
       if (!enabled || (scope !== 'all' && scope !== 'speech')) return false;
-      return speak((name ? name + '说：' : '') + text);
+      return speak((name ? name + '，' : '') + text);   // 前缀用逗号，比「说：」省半秒
     },
     sys(text) {
       if (!enabled || scope !== 'all') return false;
