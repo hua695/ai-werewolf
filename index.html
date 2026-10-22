@@ -493,11 +493,14 @@ body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
 }
 .like-btn{
   background:none;border:none;font-size:13px;cursor:pointer;padding:2px 5px;border-radius:4px;
-  opacity:.4;transition:.2s;flex-shrink:0;
+  opacity:.3;transition:opacity .2s,transform .2s,filter .2s;flex-shrink:0;line-height:1;
 }
-.like-btn:hover{opacity:1;transform:scale(1.2)}
-.like-btn.liked{opacity:1;animation:likePop .4s ease}
-@keyframes likePop{0%{transform:scale(1)}50%{transform:scale(1.5)}100%{transform:scale(1)}}
+.like-btn .like-ico{display:block;filter:grayscale(1)}
+.like-btn:hover{opacity:.85;transform:scale(1.15)}
+.like-btn:hover .like-ico{filter:grayscale(.4)}
+.like-btn.liked{opacity:1;animation:likePop .42s ease}
+.like-btn.liked .like-ico{filter:drop-shadow(0 0 6px rgba(217,169,75,.5))}
+@keyframes likePop{0%{transform:scale(1)}45%{transform:scale(1.55) rotate(-8deg)}100%{transform:scale(1)}}
 .msg.speech .s-body{
   color:#d3d9e5;font-size:14.2px;line-height:1.86;white-space:pre-wrap;word-break:break-word;
   letter-spacing:.01em;
@@ -1789,13 +1792,7 @@ function loadCfg() {
     }
     if (c.tts) {
       TTS.setEnabled(true);
-      const cb = $('ttsEnabled');
-      if (cb) cb.checked = true;
-      const sm = $('smTts');
-      if (sm) sm.checked = true;
-      $('smTtsOpts').style.display = 'flex';
-      $('smTtsSkip').style.display = 'flex';
-      $('smTtsTest').style.display = 'flex';
+      syncTtsUI(true);
     }
     if (c.ttsRate) {
       TTS.setRate(c.ttsRate);
@@ -2066,6 +2063,36 @@ async function genIdentity(seat, spec, id, taken) {
 /* ============================================================
    心声拆分
    ============================================================ */
+/* 模型没按格式输出时的兜底清洗。
+   原则：宁可多留两句啰嗦，也不能把正常发言当思考过程删掉——
+   「所以」「首先」「但是」「分析」这些都是牌桌上的正常开场，不能一刀切。
+   只在真的出现「格式 / 字数 / 输出」这类元叙述时才动手。 */
+const SPEAK_META = /(输出格式|格式如下|格式要求|按.{0,4}格式|字数|分两段|两段(来|合)|合起来|以上为|以下是(我的|本次)?发言|我(来|将)扮演|作为(一个)?(AI|大模型|语言模型)|不要输出思考|直接输出|共\s*\d+\s*字)/;
+const SPEAK_META_HEAD = /^(思路|思考过程|思考|分析|策略|输出|格式|要求|备注|自检)\s*[:：]/;
+
+function cleanSpoken(raw) {
+  const src = String(raw || '').replace(/\r/g, '');
+  const tidy = s => s.replace(/^\s*[-*•·]\s+/gm, '').replace(/^\s*#{1,6}\s*/gm, '').trim();
+
+  // 兼容「发言：……」这种非标准写法
+  const alt = src.match(/(?:^|\n)\s*(?:我的)?(?:正式)?发言\s*[:：]\s*([\s\S]+)$/);
+  const base = alt ? alt[1] : src;
+
+  // 一点元叙述迹象都没有，就原文照发，只去掉列表符号和标题井号
+  if (!SPEAK_META.test(base) && !SPEAK_META_HEAD.test(base.trim())) return tidy(base);
+
+  const kept = base.split('\n').filter(line => {
+    const s = line.trim();
+    if (!s) return true;
+    if (SPEAK_META_HEAD.test(s)) return false;
+    if (SPEAK_META.test(s)) return false;
+    return true;
+  });
+  const out = kept.join('\n').trim();
+  // 清完剩太少，说明判断过头了，退回原文
+  return out.length >= 15 ? out : tidy(base);
+}
+
 function splitSpeak(raw) {
   const t = String(raw || '');
   let whisper = '';
@@ -2077,33 +2104,12 @@ function splitSpeak(raw) {
   const mS = t.match(/【发言】([\s\S]*)$/);
   if (mS) {
     body = mS[1].trim();
+    // 发言部分偶尔还会拖着「字数：…」之类的尾巴，顺手清一下
+    body = cleanSpoken(body);
   } else if (mW) {
-    body = t.replace(mW[0], '').trim();
+    body = cleanSpoken(t.replace(mW[0], '').trim());
   } else {
-    // 没有按格式输出，尝试过滤掉思考过程
-    const lines = body.split('\n').filter(line => {
-      const trimmed = line.trim();
-      if (!trimmed) return true;
-      // 过滤明显的思考/元叙述
-      if (/^(作为|我需要|我应该|正式发言|注意|首先|其次|然后|接下来|分析|思考|思路|目标|策略|要求|所以|但是|或者|我们看|这可能|实际上|可能是|最好|意思是|我们应该)/.test(trimmed)) return false;
-      if (/^(我是|我的身份|我知道|我可以|PK|对手|辩护|伪装)/.test(trimmed) && trimmed.length > 30) return false;
-      // 过滤包含"格式"、"输出"、"【"、"】"的元叙述
-      if (/格式|输出|【|】|两段|合起来|字数控制/.test(trimmed) && trimmed.length > 20) return false;
-      return true;
-    });
-    body = lines.join('\n').trim();
-    // 如果过滤后太空了，就用原文（但标记一下）
-    if (body.length < 15) body = t;
-  }
-
-  // 二次过滤：如果body里包含大量元叙述关键词，尝试截取最后一段（通常最后一段是真正的发言）
-  const metaCount = (body.match(/注意|要求|格式|思考|分析|所以|但是|或者|可能|应该|需要|我们|你在|牌桌上|正式发言|合起来|字数/g) || []).length;
-  if (metaCount > 5 && body.length > 100) {
-    // 元叙述太多，取最后一段看起来像发言的内容
-    const paragraphs = body.split(/\n\s*\n/).filter(p => p.trim().length > 10);
-    if (paragraphs.length > 1) {
-      body = paragraphs[paragraphs.length - 1].trim();
-    }
+    body = cleanSpoken(t);
   }
 
   return {
@@ -2742,6 +2748,11 @@ function toggleFast() {
     b.textContent = FAST ? '正常' : '快进';
   }
   if (FAST) SFX.vote();
+  if (FAST) {
+    // 快进模式下没人愿意等逐字打，也没人听播报
+    TYPER.cancelAll();
+    TTS.stop();
+  }
   setStatus(FAST ? '已快进，跳过长停顿' : '恢复正常节奏', false);
 }
 
@@ -3081,6 +3092,8 @@ function addNode(cls, html) {
 function msgPhase(title, sub, kind) {
   addNode('msg phase ' + (kind || ''), '<div class="p-main">' + esc(title) + '</div>' +
     (sub ? '<div class="p-sub">' + esc(sub) + '</div>' : ''));
+  // 播报范围选了「发言+系统消息」时，昼夜交替也念一句
+  if (kind) TTS.sys(sub ? title + '，' + sub : title);
 }
 
 function msgSys(text) {
@@ -3100,6 +3113,39 @@ function msgError(text) {
   addNode('msg err', esc(text));
 }
 
+/* 打字机：统一登记，重置对局或切快进时一次性收掉，免得计时器漏在后台 */
+const TYPER = {
+  live: new Set(),
+  run(el, text, speed) {
+    let i = 0;
+    let done = false;
+    let timer = 0;
+    const ctrl = {
+      finish() {
+        if (done) return;
+        done = true;
+        clearInterval(timer);
+        TYPER.live.delete(ctrl);
+        el.textContent = text;
+        scrollFeed(true);
+      }
+    };
+    el.textContent = '';
+    timer = setInterval(() => {
+      i++;
+      el.textContent = text.slice(0, i);   // 切字符串比逐字 += 少一次排版
+      if (i % 3 === 0) scrollFeed(false);
+      if (i >= text.length) ctrl.finish();
+    }, speed);
+    TYPER.live.add(ctrl);
+    return ctrl;
+  },
+  cancelAll() {
+    TYPER.live.forEach(c => c.finish());
+    TYPER.live.clear();
+  }
+};
+
 function msgSpeech(p, tag) {
   // 未揭晓前不给狼人上红边，免得从配色上看穿底牌
   const wolf = (S && S.revealed && isWolfRole(p.role)) ? ' wolf' : '';
@@ -3108,7 +3154,8 @@ function msgSpeech(p, tag) {
       '<span class="s-seat">' + p.seat + '</span>' +
       '<span class="s-name">' + esc(p.name) + '</span>' +
       '<span class="s-tag">' + (tag || '发言') + '</span>' +
-      '<button class="like-btn" data-like="' + p.seat + '" title="精彩发言">👏</button>' +
+      '<button class="like-btn" data-like="' + p.seat + '" title="这条发言说得好" aria-pressed="false">' +
+        '<span class="like-ico">👏</span></button>' +
     '</div>' +
     '<div class="whisper" style="display:none"></div>' +
     '<div class="s-body"><span class="typing"><i></i><i></i><i></i></span></div>'
@@ -3119,10 +3166,16 @@ function msgSpeech(p, tag) {
 
   const bodyEl = node.querySelector('.s-body');
   const whisperEl = node.querySelector('.whisper');
+  let typer = null;
 
   return {
     set(text, whisper) {
       node.classList.remove('speaking');
+      const plain = String(text == null ? '' : text);
+
+      // 同一条消息可能被改写（重试、改口），先收掉上一轮的计时器
+      if (typer) { typer.finish(); typer = null; }
+
       if (whisper && CFG.showWhisper && !secretsHidden()) {
         whisperEl.textContent = whisper;
         whisperEl.style.display = '';
@@ -3130,31 +3183,16 @@ function msgSpeech(p, tag) {
         whisperEl.style.display = 'none';
       }
 
-      // 快进模式或文本太短，直接显示
-      if (FAST || text.length < 20) {
-        bodyEl.textContent = text;
+      // 声音先起，打字跟上，两者基本同时结束；自己说的话不用再念给自己听
+      if (TTS.enabled && !isMe(p)) TTS.speech(plain, p.name);
+
+      // 快进、减少动效、文本太短，都不必逐字打
+      if (FAST || REDUCED || plain.length < 20) {
+        bodyEl.textContent = plain;
         scrollFeed(true);
-        if (TTS.enabled) TTS.speech(text, p.name);
         return;
       }
-
-      // 打字机效果
-      bodyEl.textContent = '';
-      let i = 0;
-      const speed = text.length > 200 ? 18 : 32; // 长文本打快一点
-      const typeTimer = setInterval(() => {
-        if (i >= text.length) {
-          clearInterval(typeTimer);
-          scrollFeed(true);
-          return;
-        }
-        bodyEl.textContent += text[i];
-        i++;
-        if (i % 3 === 0) scrollFeed(false); // 每打几个字滚动一次
-      }, speed);
-
-      // 语音播报同步开始
-      if (TTS.enabled) TTS.speech(text, p.name);
+      typer = TYPER.run(bodyEl, plain, plain.length > 200 ? 18 : 32);
     }
   };
 }
@@ -3321,138 +3359,218 @@ const SFX = (() => {
 
 /* ============================================================
    语音播报（TTS）
+
+   两条路：先用浏览器原生合成（不花流量、延迟低），
+   原生不出声或没中文音色时，自动退回百度在线语音。
+   任何一次新播报都会顶掉旧的，避免两句话叠在一起。
    ============================================================ */
 const TTS = (() => {
+  const BAIDU_MAX = 120;    // 单次合成的字数上限，超了在标点处截断
+  const NATIVE_WAIT = 900;  // 原生合成多久没动静就判失效，转在线
+  const BAIDU_SPD = 5;      // 百度语速基准，1 慢 15 快
+
   let enabled = false;
   let rate = 1;
+  let pitch = 1;
   let scope = 'speech';
-  let currentAudio = null;
+  let utter = null;         // 当前原生播报
+  let audio = null;         // 当前在线音频
+  let watchdog = 0;         // 原生合成的看门狗
+  let seq = 0;              // 播报序号，过期的回调一律丢掉
+  let nativeFails = 0;      // 原生连续失败次数
+  let nativeOff = false;    // 判死之后本局不再试原生
+  let voicesHooked = false;
+  let voiceCache = null;
 
-  // 优先用Web Speech API（浏览器内置，不需要网络请求）
-  function speakNative(text, opts) {
-    if (!window.speechSynthesis) return false;
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.rate = opts.rate || rate;
-      utter.pitch = 1;
-      utter.volume = 1;
-      utter.lang = 'zh-CN';
-      utter.onend = () => console.log('原生TTS播放结束');
-      utter.onerror = (e) => {
-        console.warn('原生TTS错误:', e);
-      };
-      window.speechSynthesis.speak(utter);
-      return true;
-    } catch (e) {
-      console.warn('原生TTS失败:', e);
-      return false;
+  const canNative = () => !nativeOff && !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
+  // 用 file:// 直接打开页面时没有 /api/proxy，在线回退不成立
+  const canOnline = () => typeof window.Audio === 'function' && location.protocol !== 'file:';
+
+  /* 找中文音色。Chrome 首次 getVoices() 可能是空数组，等事件再取一次 */
+  function zhVoice() {
+    if (!window.speechSynthesis) return null;
+    if (voiceCache) return voiceCache;
+    const pickVoice = () => {
+      const vs = window.speechSynthesis.getVoices() || [];
+      return vs.find(v => /^zh([-_]|$)/i.test(v.lang || '')) ||
+             vs.find(v => /(zh|cmn|chinese|中文|普通话)/i.test((v.lang || '') + ' ' + (v.name || ''))) || null;
+    };
+    voiceCache = pickVoice();
+    if (!voiceCache && !voicesHooked && window.speechSynthesis.addEventListener) {
+      voicesHooked = true;
+      window.speechSynthesis.addEventListener('voiceschanged', () => {
+        voicesHooked = false;
+        voiceCache = pickVoice();
+        // 音色是异步加载的，加载到了就重新给原生一次机会
+        if (voiceCache) { nativeOff = false; nativeFails = 0; }
+      }, { once: true });
     }
+    return voiceCache;
   }
 
-  // 百度TTS备用方案（通过Pages代理解决CORS）
-  function baiduSpeak(text, opts) {
-    if (!text) return;
-    // 快进模式下不播报，跟不上节奏
-    if (typeof FAST !== 'undefined' && FAST) return;
+  /* 念之前先洗一遍：markdown 记号、表情、换行都不该念出来 */
+  function clean(text) {
+    return String(text || '')
+      .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '')   // emoji 等扩展区字符
+      .replace(/[\u2600-\u27BF\uFE0F]/g, '')
+      .replace(/[*#`_~<>|\\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
 
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-    // 截断太长的文本，TTS越快
-    const shortText = text.slice(0, 100);
-    // 默认语速加快一点
-    const fastRate = (opts.rate || rate) * 1.2;
-    const spd = Math.round(fastRate * 4);
-    // 用Pages代理，避免CORS问题
-    const targetUrl = 'https://fanyi.baidu.com/gettts?lan=zh&text=' + encodeURIComponent(shortText) + '&spd=' + spd + '&source=web';
-    const url = '/api/proxy?target=' + encodeURIComponent(targetUrl);
-    const audio = new Audio();
-    audio.volume = 1;
-    audio.onerror = (e) => console.warn('百度TTS失败:', audio.error);
-    audio.src = url;
-    audio.play().catch((e) => console.warn('百度TTS播放被拦截:', e));
-    currentAudio = audio;
+  /* 长句在标点处断，别把词切成两半 */
+  function cutAt(text, max) {
+    if (text.length <= max) return text;
+    const head = text.slice(0, max);
+    const at = Math.max(
+      head.lastIndexOf('。'), head.lastIndexOf('！'), head.lastIndexOf('？'),
+      head.lastIndexOf('；'), head.lastIndexOf('，'));
+    return at >= max * 0.6 ? head.slice(0, at + 1) : head;
+  }
+
+  function silence() {
+    clearTimeout(watchdog);
+    watchdog = 0;
+    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch (e) { /* 忽略 */ } }
+    if (audio) { try { audio.pause(); } catch (e) { /* 忽略 */ } audio = null; }
+    utter = null;
+  }
+
+  function stopAll() { seq++; silence(); }
+
+  function busy() {
+    const s = window.speechSynthesis;
+    return !!((s && (s.speaking || s.pending)) || (audio && !audio.paused));
+  }
+
+  /* 在线语音：走 Pages 代理绕开跨域 */
+  function talkOnline(text, o, mySeq) {
+    if (mySeq != null && mySeq !== seq) return false;
+    if (!canOnline()) return false;
+    const body = cutAt(text, BAIDU_MAX);
+    if (!body) return false;
+    const spd = Math.round((o.rate || rate) * BAIDU_SPD);
+    const target = 'https://fanyi.baidu.com/gettts?lan=zh&text=' + encodeURIComponent(body) +
+      '&spd=' + Math.min(15, Math.max(1, spd)) + '&source=web';
+    const a = new Audio('/api/proxy?target=' + encodeURIComponent(target));
+    a.volume = 1;
+    const drop = () => { if (audio === a) audio = null; };
+    a.onended = drop;
+    a.onerror = () => { drop(); console.warn('在线语音播放失败'); };
+    audio = a;
+    a.play().catch(drop);
+    return true;
+  }
+
+  /* 原生语音。真正的坑有两个：
+     1. cancel() 之后同步 speak() 会被 Chrome 吞掉，得隔一拍；
+     2. 没装中文音色时 speak() 静默失败，要用看门狗兜底。 */
+  function talkNative(text, o, mySeq) {
+    const synth = window.speechSynthesis;
+    let settled = false;
+
+    const toOnline = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      watchdog = 0;
+      if (mySeq !== seq) return;
+      nativeFails++;
+      if (nativeFails >= 2) nativeOff = true;   // 两次都不出声，这局别浪费时间了
+      talkOnline(text, o, mySeq);
+    };
+
+    const start = () => {
+      if (mySeq !== seq) { settled = true; return; }
+      try {
+        utter = new SpeechSynthesisUtterance(text);
+        utter.rate = o.rate || rate;
+        utter.pitch = o.pitch != null ? o.pitch : pitch;
+        utter.volume = 1;
+        utter.lang = 'zh-CN';
+        const v = zhVoice();
+        if (v) utter.voice = v;
+        utter.onstart = () => {
+          settled = true;
+          nativeFails = 0;
+          clearTimeout(watchdog);
+          watchdog = 0;
+        };
+        utter.onerror = toOnline;
+        synth.speak(utter);
+        watchdog = setTimeout(() => {
+          if (!settled && !synth.speaking && !synth.pending) toOnline();
+        }, NATIVE_WAIT);
+      } catch (e) {
+        toOnline();
+      }
+    };
+
+    // cancel() 之后同步调 speak() 会被 Chrome 直接吞掉，统一隔一拍再念
+    if (synth.speaking || synth.pending) {
+      try { synth.cancel(); } catch (e) { /* 忽略 */ }
+    }
+    setTimeout(start, 60);
+    return true;
   }
 
   function speak(text, opts) {
-    if (!enabled || !text) return;
     const o = opts || {};
-    // 优先用原生TTS
-    if (speakNative(text, o)) return;
-    // 原生不支持，用百度TTS
-    baiduSpeak(text, o);
+    if (!enabled && !o.force) return false;
+    if (typeof FAST !== 'undefined' && FAST && !o.force) return false;   // 快进模式跟不上，不念
+    const body = clean(text);
+    if (!body) return false;
+    const mySeq = ++seq;   // 新的这句顶掉旧的
+    silence();
+    if (canNative()) return talkNative(body, o, mySeq);
+    return talkOnline(body, o, mySeq);
   }
 
-  function stop() {
-    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch(e) {} }
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-  }
+  function stop() { stopAll(); }
 
-  function skip() { stop(); }
+  function skip() {
+    const was = busy();
+    stopAll();
+    return was;
+  }
 
   function test() {
-    if (!window.speechSynthesis) {
-      toast('❌ 浏览器不支持语音合成，用百度TTS', 4000);
-      baiduSpeak('语音播报测试，你能听到我说话吗？', {});
-      return true;
+    if (!canNative() && !canOnline()) {
+      toast('这台浏览器没有可用的语音合成');
+      return false;
     }
-
-    const voices = window.speechSynthesis.getVoices();
-    const zhVoices = voices.filter(v => /zh|cmn|chinese|中文|普通话/i.test(v.lang + v.name));
-    console.log('所有语音:', voices.map(v => v.name + '(' + v.lang + ')'));
-    console.log('中文语音:', zhVoices.map(v => v.name + '(' + v.lang + ')'));
-
-    toast('🔊 共' + voices.length + '个语音，中文' + zhVoices.length + '个。正在播放测试…', 5000);
-
-    // 先试原生TTS
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance('语音播报测试，你能听到我说话吗？');
-      utter.rate = rate;
-      utter.pitch = 1;
-      utter.volume = 1;
-      utter.lang = 'zh-CN';
-      if (zhVoices.length > 0) utter.voice = zhVoices[0];
-      utter.onstart = () => console.log('原生TTS开始播放');
-      utter.onend = () => console.log('原生TTS结束');
-      utter.onerror = (e) => {
-        console.warn('原生TTS错误:', e);
-        toast('⚠️ 原生TTS出错:' + e.error + '，切换百度TTS', 4000);
-        setTimeout(() => baiduSpeak('语音播报测试，你能听到我说话吗？', {}), 500);
-      };
-      window.speechSynthesis.speak(utter);
-
-      // 2秒后检查是否真的在播放
-      setTimeout(() => {
-        if (!window.speechSynthesis.speaking) {
-          console.log('原生TTS没在播放，切换百度TTS');
-          toast('⚠️ 原生TTS没出声，切换百度TTS', 4000);
-          baiduSpeak('语音播报测试，你能听到我说话吗？', {});
-        }
-      }, 2000);
-    } catch (e) {
-      console.warn('原生TTS失败:', e);
-      baiduSpeak('语音播报测试，你能听到我说话吗？', {});
+    const ok = speak('语音播报已开启，轮到谁发言，我就念给你听。', { force: true });
+    if (!ok) {
+      toast('试播没起来，检查一下浏览器的声音权限');
+      return false;
     }
-
+    toast(canNative() && !zhVoice()
+      ? '🔊 正在试播；系统里没装中文音色，会自动改用在线语音'
+      : '🔊 正在试播，听到声音就说明正常');
     return true;
   }
 
   return {
-    setEnabled(v) { enabled = v; if (!v) stop(); },
+    setEnabled(v) {
+      enabled = !!v;
+      if (!enabled) stopAll();
+      else { nativeOff = false; nativeFails = 0; }   // 重新打开时再给原生一次机会
+    },
     get enabled() { return enabled; },
-    setRate(v) { rate = Number(v) || 1; },
+    setRate(v) { rate = Math.min(2, Math.max(0.5, Number(v) || 1)); },
+    get rate() { return rate; },
     setScope(v) { scope = v; },
     get scope() { return scope; },
-    get supported() { return true; },
+    get supported() { return canNative() || canOnline(); },
+    get speaking() { return busy(); },
     speak, stop, skip, test,
     speech(text, name) {
-      if (!enabled || (scope !== 'all' && scope !== 'speech')) return;
-      const prefix = name ? (name + '说：') : '';
-      speak(prefix + text);
+      if (!enabled || (scope !== 'all' && scope !== 'speech')) return false;
+      return speak((name ? name + '说：' : '') + text);
     },
     sys(text) {
-      if (!enabled || scope !== 'all') return;
-      speak(text, { rate: rate * 0.9, pitch: 0.9 });
+      if (!enabled || scope !== 'all') return false;
+      return speak(text, { rate: rate * 0.9, pitch: 0.92 });
     }
   };
 })();
@@ -3571,15 +3689,21 @@ function deathBeat(kind) {
   }, 850);
 }
 
-/* 紧张时刻心跳效果 */
+/* 紧张时刻心跳效果。连按几次也不会叠加，后一次顶掉前一次 */
+let HB_TIMEOUT = 0;
+let HB_BEAT = 0;
 function heartbeat(duration) {
   if (REDUCED) return;
   const stage = $('stage');
   if (!stage) return;
+  clearTimeout(HB_TIMEOUT);
+  clearTimeout(HB_BEAT);
+  stage.classList.remove('heartbeat');
+  void stage.offsetWidth;          // 强制重排，动画才会重新播
   stage.classList.add('heartbeat');
   SFX.heartbeat();
-  setTimeout(() => SFX.heartbeat(), 280);
-  setTimeout(() => stage.classList.remove('heartbeat'), duration || 2400);
+  HB_BEAT = setTimeout(() => SFX.heartbeat(), 280);
+  HB_TIMEOUT = setTimeout(() => stage.classList.remove('heartbeat'), duration || 2400);
 }
 
 function hideHero() {
@@ -4851,6 +4975,7 @@ function stopGame() {
   RUN++;
   PAUSED = false;
   TTS.stop();
+  TYPER.cancelAll();
   $('pauseBtn').disabled = true;
   $('stopBtn').disabled = true;
   if ($('stopBtn2')) $('stopBtn2').disabled = true;
@@ -4871,6 +4996,7 @@ function resetUI() {
   RUN++;
   PAUSED = false;
   TTS.stop();
+  TYPER.cancelAll();
   S = null;
   NOTES = {};
   lockView(false);
@@ -4941,9 +5067,7 @@ document.addEventListener('click', (e) => {
 $('smSfx').addEventListener('change', () => {
   const on = $('smSfx').checked;
   SFX.setEnabled(on);
-  const b = $('soundBtn');
-  b.textContent = on ? '🔊' : '🔇';
-  b.classList.toggle('on', on);
+  syncTtsUI(TTS.enabled);
   saveCfg();
   if (on) SFX.vote();
 });
@@ -4952,18 +5076,11 @@ $('smSfx').addEventListener('change', () => {
 $('smTts').addEventListener('change', () => {
   const on = $('smTts').checked;
   TTS.setEnabled(on);
-  $('smTtsOpts').style.display = on ? 'flex' : 'none';
-  $('smTtsSkip').style.display = on ? 'flex' : 'none';
-  $('smTtsTest').style.display = on ? 'flex' : 'none';
-  const cb = $('ttsEnabled');
-  if (cb) cb.checked = on;
+  syncTtsUI(on);
   saveCfg();
   if (on) {
-    if (!TTS.supported) {
-      toast('当前浏览器不支持语音播报');
-    } else {
-      setTimeout(() => TTS.test(), 200);
-    }
+    if (!TTS.supported) toast('当前浏览器不支持语音播报');
+    else setTimeout(() => TTS.test(), 220);
   }
 });
 $('smRate').addEventListener('change', () => {
@@ -4973,21 +5090,35 @@ $('smRate').addEventListener('change', () => {
   saveCfg();
 });
 $('smSkip').addEventListener('click', () => {
-  TTS.skip();
-  toast('已跳过当前播报');
+  const was = TTS.skip();
+  TYPER.cancelAll();            // 正在逐字打的那条也一起落到地上
+  toast(was ? '已跳过当前播报' : '当前没有在播报');
 });
-$('smTest').addEventListener('click', () => {
-  TTS.test();
-  toast('正在播放测试语音…');
-});
+$('smTest').addEventListener('click', () => TTS.test());
+
+/* 语音相关的三处开关（声音菜单 / 配置面板）始终保持一致 */
+function syncTtsUI(on) {
+  $('smTtsOpts').style.display = on ? 'flex' : 'none';
+  $('smTtsSkip').style.display = on ? 'flex' : 'none';
+  $('smTtsTest').style.display = on ? 'flex' : 'none';
+  const sm = $('smTts');
+  if (sm) sm.checked = on;
+  const cb = $('ttsEnabled');
+  if (cb) cb.checked = on;
+  const b = $('soundBtn');
+  const sfxOn = (typeof SFX !== 'undefined') ? SFX.enabled : true;
+  if (b) {
+    b.textContent = (sfxOn || on) ? '🔊' : '🔇';
+    b.classList.toggle('on', sfxOn || on);
+    b.setAttribute('aria-pressed', (sfxOn || on) ? 'true' : 'false');
+  }
+}
 
 /* 配置面板里的语音设置同步 */
 const ttsCb = $('ttsEnabled');
 if (ttsCb) ttsCb.addEventListener('change', () => {
   TTS.setEnabled(ttsCb.checked);
-  $('smTts').checked = ttsCb.checked;
-  $('smTtsOpts').style.display = ttsCb.checked ? 'flex' : 'none';
-  $('smTtsSkip').style.display = ttsCb.checked ? 'flex' : 'none';
+  syncTtsUI(ttsCb.checked);
   saveCfg();
 });
 const ttsRateSel = $('ttsRate');
@@ -5041,17 +5172,15 @@ $('profileModal').addEventListener('click', e => {
   }
 });
 
-/* 发言点赞（事件委托） */
+/* 发言点赞（事件委托）。只标自己觉得好的那句，再点一次撤掉 */
 feedEl().addEventListener('click', e => {
   const btn = e.target.closest('.like-btn');
   if (!btn) return;
-  btn.classList.toggle('liked');
-  if (btn.classList.contains('liked')) {
-    btn.textContent = '👏';
-    SFX.tick();
-  } else {
-    btn.textContent = '👏';
-  }
+  const on = !btn.classList.contains('liked');
+  btn.classList.toggle('liked', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.title = on ? '已点赞，再点一次取消' : '这条发言说得好';
+  if (on) SFX.tick();
 });
 
 /* 记牌板 */
@@ -5173,11 +5302,8 @@ $('tabConfig').addEventListener('click', () => {
 loadCfg();
 // 同步声音菜单状态
 $('smSfx').checked = SFX.enabled;
-$('smTts').checked = TTS.enabled;
-$('smTtsOpts').style.display = TTS.enabled ? 'flex' : 'none';
-$('smTtsSkip').style.display = TTS.enabled ? 'flex' : 'none';
-$('smTtsTest').style.display = TTS.enabled ? 'flex' : 'none';
 $('smRate').value = TTS.rate;
+syncTtsUI(TTS.enabled);
 renderSeatEditor(null);
 renderSeats();
 CFG = readCfg();
