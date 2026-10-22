@@ -127,6 +127,42 @@ body.is-day .brand-mark{
 .icon-btn.on{color:var(--gold);border-color:rgba(217,169,75,.3);background:var(--gold-dim)}
 #soundBtn{width:34px;padding:6px 0;text-align:center;font-size:13px}
 
+/* 声音设置下拉菜单 */
+.sound-wrap{position:relative}
+.sound-menu{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:100;
+  min-width:200px;padding:10px 12px;border-radius:10px;
+  background:rgba(15,19,28,.98);border:1px solid rgba(217,169,75,.25);
+  box-shadow:0 12px 40px rgba(0,0,0,.6);backdrop-filter:blur(12px);
+  animation:menuIn .18s var(--ease);
+}
+@keyframes menuIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.sm-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0}
+.sm-item + .sm-item{border-top:1px solid rgba(255,255,255,.06)}
+.sm-label{font-size:12.5px;color:var(--text-2)}
+.sm-sub{padding-left:8px}
+.sm-sel{
+  background:var(--ink-600);border:1px solid var(--line);color:var(--text);
+  border-radius:6px;padding:3px 8px;font-size:12px;
+}
+.sm-btn{
+  width:100%;background:var(--ink-600);border:1px solid var(--line);color:var(--text-2);
+  border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer;transition:.15s;
+}
+.sm-btn:hover{color:var(--gold);border-color:rgba(217,169,75,.4)}
+/* 开关样式 */
+.switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.slider{
+  position:absolute;cursor:pointer;inset:0;background:#2a3142;border-radius:20px;transition:.2s;
+}
+.slider::before{
+  content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;
+  background:white;border-radius:50%;transition:.2s;
+}
+.switch input:checked + .slider{background:rgba(217,169,75,.5)}
+.switch input:checked + .slider::before{transform:translateX(16px)}
+
 /* ══════════ 布局 ══════════ */
 .app{
   display:grid;grid-template-columns:250px minmax(0,1fr) 350px;
@@ -1143,8 +1179,31 @@ body.player-view .whisper{display:none!important}
     <span class="metric" id="chipText">筹码 <b>100</b></span>
   </div>
   <div class="topactions">
-    <button class="icon-btn on" id="soundBtn" title="环境音效" aria-label="环境音效" aria-pressed="true">🔊</button>
-    <button class="icon-btn" id="ttsBtn" title="语音播报发言" aria-label="语音播报" aria-pressed="false">🔈</button>
+    <div class="sound-wrap">
+      <button class="icon-btn on" id="soundBtn" title="声音设置" aria-label="声音设置" aria-pressed="true">🔊</button>
+      <div class="sound-menu" id="soundMenu" style="display:none">
+        <div class="sm-item">
+          <label class="sm-label">环境音效</label>
+          <label class="switch"><input type="checkbox" id="smSfx" checked><span class="slider"></span></label>
+        </div>
+        <div class="sm-item">
+          <label class="sm-label">语音播报</label>
+          <label class="switch"><input type="checkbox" id="smTts"><span class="slider"></span></label>
+        </div>
+        <div class="sm-item sm-sub" id="smTtsOpts" style="display:none">
+          <label class="sm-label">语速</label>
+          <select class="sm-sel" id="smRate">
+            <option value="0.8">慢</option>
+            <option value="1" selected>正常</option>
+            <option value="1.2">快</option>
+            <option value="1.5">很快</option>
+          </select>
+        </div>
+        <div class="sm-item sm-sub" id="smTtsSkip" style="display:none">
+          <button class="sm-btn" id="smSkip">跳过当前播报</button>
+        </div>
+      </div>
+    </div>
     <button class="icon-btn" id="fastBtn" title="快进，按 F 也能切">快进</button>
     <button class="icon-btn" id="noteBtn" title="记牌板：票型、狼面分、随手记">笔记</button>
     <button class="icon-btn on" id="viewBtn" title="切换观众视角与选手视角">上帝视角</button>
@@ -1719,15 +1778,19 @@ function loadCfg() {
     }
     if (c.tts) {
       TTS.setEnabled(true);
-      const b = $('ttsBtn');
-      if (b) { b.textContent = '🔊'; b.classList.add('on'); b.setAttribute('aria-pressed', 'true'); }
       const cb = $('ttsEnabled');
       if (cb) cb.checked = true;
+      const sm = $('smTts');
+      if (sm) sm.checked = true;
+      $('smTtsOpts').style.display = 'flex';
+      $('smTtsSkip').style.display = 'flex';
     }
     if (c.ttsRate) {
       TTS.setRate(c.ttsRate);
       const sel = $('ttsRate');
       if (sel) sel.value = c.ttsRate;
+      const sm = $('smRate');
+      if (sm) sm.value = c.ttsRate;
     }
     if (c.ttsScope) {
       TTS.setScope(c.ttsScope);
@@ -4719,47 +4782,65 @@ $('pauseBtn').addEventListener('click', togglePause);
 $('stopBtn').addEventListener('click', stopGame);
 $('exportBtn').addEventListener('click', exportLog);
 $('viewBtn').addEventListener('click', toggleView);
-$('soundBtn').addEventListener('click', () => {
-  const on = !SFX.enabled;
+$('soundBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = $('soundMenu');
+  const show = menu.style.display === 'none' || !menu.style.display;
+  menu.style.display = show ? 'block' : 'none';
+});
+document.addEventListener('click', (e) => {
+  const wrap = document.querySelector('.sound-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    $('soundMenu').style.display = 'none';
+  }
+});
+
+/* 声音菜单：环境音效 */
+$('smSfx').addEventListener('change', () => {
+  const on = $('smSfx').checked;
   SFX.setEnabled(on);
   const b = $('soundBtn');
   b.textContent = on ? '🔊' : '🔇';
   b.classList.toggle('on', on);
-  b.setAttribute('aria-pressed', String(on));
   saveCfg();
   if (on) SFX.vote();
 });
 
-/* 语音播报 */
-$('ttsBtn').addEventListener('click', () => {
-  const on = !TTS.enabled;
+/* 声音菜单：语音播报 */
+$('smTts').addEventListener('change', () => {
+  const on = $('smTts').checked;
   TTS.setEnabled(on);
-  const b = $('ttsBtn');
-  b.textContent = on ? '🔊' : '🔈';
-  b.classList.toggle('on', on);
-  b.setAttribute('aria-pressed', String(on));
+  $('smTtsOpts').style.display = on ? 'flex' : 'none';
+  $('smTtsSkip').style.display = on ? 'flex' : 'none';
   const cb = $('ttsEnabled');
   if (cb) cb.checked = on;
   saveCfg();
   if (on) TTS.speak('语音播报已开启');
 });
-$('ttsBtn').addEventListener('dblclick', () => {
+$('smRate').addEventListener('change', () => {
+  TTS.setRate($('smRate').value);
+  const sel = $('ttsRate');
+  if (sel) sel.value = $('smRate').value;
+  saveCfg();
+});
+$('smSkip').addEventListener('click', () => {
   TTS.skip();
   toast('已跳过当前播报');
 });
+
+/* 配置面板里的语音设置同步 */
 const ttsCb = $('ttsEnabled');
 if (ttsCb) ttsCb.addEventListener('change', () => {
   TTS.setEnabled(ttsCb.checked);
-  const b = $('ttsBtn');
-  if (b) {
-    b.textContent = ttsCb.checked ? '🔊' : '🔈';
-    b.classList.toggle('on', ttsCb.checked);
-  }
+  $('smTts').checked = ttsCb.checked;
+  $('smTtsOpts').style.display = ttsCb.checked ? 'flex' : 'none';
+  $('smTtsSkip').style.display = ttsCb.checked ? 'flex' : 'none';
   saveCfg();
 });
 const ttsRateSel = $('ttsRate');
 if (ttsRateSel) ttsRateSel.addEventListener('change', () => {
   TTS.setRate(ttsRateSel.value);
+  $('smRate').value = ttsRateSel.value;
   saveCfg();
 });
 const ttsScopeSel = $('ttsScope');
