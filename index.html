@@ -918,6 +918,25 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
+/* ══════════ 存档恢复条 ══════════ */
+.resume-bar{
+  position:fixed;left:50%;transform:translate(-50%,-14px);top:64px;
+  display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;
+  background:#1a2130;border:1px solid #2c3648;border-radius:var(--r-sm);
+  box-shadow:var(--sh-1);z-index:210;opacity:0;pointer-events:none;
+  transition:.28s var(--ease);font-size:12.4px;color:var(--text);
+}
+.resume-bar.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.resume-bar .rb-text{letter-spacing:.02em;line-height:1.5}
+.resume-bar .rb-text i{font-style:normal;color:var(--gold,#d9a94b);font-variant-numeric:tabular-nums}
+.resume-bar button{
+  font:inherit;font-size:12px;padding:6px 13px;border-radius:8px;cursor:pointer;
+  background:transparent;border:1px solid #2c3648;color:var(--text-3);
+  transition:.18s var(--ease);letter-spacing:.03em;
+}
+.resume-bar button.go{background:rgba(217,169,75,.14);border-color:rgba(217,169,75,.42);color:#e8c98a}
+.resume-bar button:hover{transform:translateY(-1px)}
+
 /* ══════════ 头像与座位（升级） ══════════ */
 .seat-card{grid-template-columns:34px minmax(0,1fr) auto}
 .seat-ava{width:34px;height:34px;position:relative;flex-shrink:0;cursor:pointer}
@@ -6085,6 +6104,65 @@ function wasCheckedPublicly(seat) {
   return (S.log || []).some(l => l.kind === 'speech' && l.seat !== seat && re.test(String(l.text || '')));
 }
 
+/* 本轮公开发言里的点名汇总。只做两件事：找出被同伴公开点成可疑的人、统计有几个人点。
+   全部原料都来自公开发言，不看底牌、不看心声，所以给谁看都不算泄密。
+   判断方式是逐句扫座位号，同一句里必须出现带敌意的措辞才算数，
+   一句里既说号码又给出否定态度的（「不像狼」「我信他」）直接排除。 */
+function accusedTally() {
+  const SUS = /怀疑|可疑|像狼|是狼|狼人|狼面|查杀|不信|有问题|不对劲|解释不清|心虚|最像|挂票|出他|投/;
+  const CLEAR = /不像狼|不是狼|不怀疑|我信他|像好人|是好人|站得住|没问题|先留着/;
+  const alive = new Set(aliveSeats().map(s => s.seat));
+  const by = new Map();
+  for (const it of (S.log || [])) {
+    if (it.kind !== 'speech' || it.round !== S.round) continue;
+    const text = String(it.text || '');
+    for (const sent of text.split(/[。！？；\n]/)) {
+      if (!sent) continue;
+      const re = /(\d{1,2})\s*号/g;
+      let m;
+      while ((m = re.exec(sent))) {
+        const seat = Number(m[1]);
+        if (!alive.has(seat) || seat === it.seat) continue;
+        /* 敌意措辞必须紧贴这个号码，隔太远就说明那是在说别人的事 */
+        const around = sent.slice(Math.max(0, m.index - 16), m.index + 26);
+        if (CLEAR.test(around) || !SUS.test(around)) continue;
+        if (!by.has(seat)) by.set(seat, new Set());
+        by.get(seat).add(it.seat);
+      }
+    }
+  }
+  return [...by.entries()]
+    .map(([seat, set]) => ({ seat, by: [...set].sort((a, b) => a - b) }))
+    .sort((a, b) => b.by.length - a.by.length || a.seat - b.seat);
+}
+
+/* 投票前给好人阵营的归票参照。
+   狼队有夜聊和「不投队友」的纪律，六个人各投一个是好人输掉白天最常见的方式：
+   票一散，最高票往往连三分之一都不到，平票重来，最后谁都没出去，夜里接着被刀。
+   这一段把公开发言里已经形成的共识摊开，好人不必再做无用功。 */
+function voteGuidance(p) {
+  if (isWolfRole(p.role)) return [];
+  const lines = [];
+  const checked = aliveSeats()
+    .filter(s => s.seat !== p.seat && wasCheckedPublicly(s.seat))
+    .map(s => s.seat);
+  if (checked.length) {
+    lines.push('【公开查杀】' + checked.map(nameOf).join('、') +
+      ' 已经有人公开报出查验结果是狼。除非你手里有更硬的依据，这一票应该跟上去。');
+  }
+  const tally = accusedTally().filter(t => t.by.length >= 2).slice(0, 3);
+  if (tally.length) {
+    lines.push('【本轮被点名最多的人】');
+    tally.forEach(t => lines.push('· ' + nameOf(t.seat) + '：' + t.by.length + ' 人被点（' +
+      t.by.map(n => n + ' 号').join('、') + '）'));
+  }
+  if (checked.length || tally.length) {
+    lines.push('票拆成几份等于白白放过一个狼。没有明确反证，就把票压到上面的人身上，' +
+      '与其各投各的，不如先把一个人送上票台。');
+  }
+  return lines;
+}
+
 function speechOrder() {  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
   if (!alive.length) return [];
   let start = 0;
@@ -6129,6 +6207,7 @@ async function runVote(id, restrict) {
           publicState(),
           privateInfo(p) ? '【只有你知道】\n' + privateInfo(p) : '',
           '【你之前的发言与投票】\n' + memText(p),
+          voteGuidance(p).join('\n'),
           '从下列玩家中选一个放逐：' + cands.filter(s => s.seat !== p.seat)
             .map(s => s.seat + ' 号 ' + s.name).join('、'),
           isWolfRole(p.role) ? '【狼队纪律】不要把票投给自己的狼队友。' : '',
@@ -6173,6 +6252,14 @@ async function resolveVote(picks, id, isPK) {
   setTimeout(drawVoteArrows, 260);   // 等这一轮的文字和座位状态先画完
 
   const top = topSeat(tally);
+  /* 票型集中度：有效票里最高票占几成。散票是好人输掉白天最典型的方式，
+     记下来才看得出归票机制有没有真的起作用。 */
+  const valid = picks.filter(v => v.to != null).length;
+  (S.voteStat = S.voteStat || []).push({
+    round: S.round, pk: !!isPK, valid,
+    top: top ? top.count : 0,
+    cand: tally.size
+  });
   if (!top) return { outSeat: null, tie: [] };
 
   if (top.tie.length > 1) {
@@ -6255,8 +6342,204 @@ async function gate(id) {
   }
 }
 
+/* ============================================================
+   断线续跑
+   回合边界往 localStorage 存一份快照。刷新、误关标签、手机切后台被杀，
+   重进页面能接着打，不必整局重来。
+   只在回合边界存：白天说到一半刷新会退回这一轮天亮的那一刻，
+   这一轮已经说出去的话作废——牌局本身和已经发生的事实不会错乱。
+   ============================================================ */
+const SNAP_KEY = 'ww.snap';
+
+function saveSnap() {
+  if (!S || S.winner) return;
+  try {
+    localStorage.setItem(SNAP_KEY, JSON.stringify({
+      v: 1, at: Date.now(),
+      mode: MODE, human: HUMAN, diff: DIFF,
+      S: S
+    }));
+  } catch (e) { console.warn('快照写入失败', e); }
+}
+
+function readSnap() {
+  try {
+    const o = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null');
+    if (!o || o.v !== 1 || !o.S || !Array.isArray(o.S.seats) || !o.S.seats.length) return null;
+    if (o.S.winner) return null;
+    return o;
+  } catch (e) { return null; }
+}
+
+function clearSnap() {
+  try { localStorage.removeItem(SNAP_KEY); } catch (e) {}
+}
+
+/* 恢复时记录栏是空的，用日志把之前发生的事按天铺回去。
+   全部走静态节点：不打字、不配音、不弹气泡，免得恢复过程自己在台上又演一遍。 */
+function rebuildFeed() {
+  feedEl().innerHTML = '';
+  const byRound = new Map();
+  for (const it of (S.log || [])) {
+    if (!byRound.has(it.round)) byRound.set(it.round, []);
+    byRound.get(it.round).push(it);
+  }
+  const rounds = [...byRound.keys()].sort((a, b) => a - b);
+  for (const r of rounds) {
+    addNode('msg phase', '<div class="p-main">第 ' + r + ' 天</div><div class="p-sub">已发生的记录</div>');
+    for (const it of byRound.get(r)) {
+      if (it.kind === 'speech') {
+        addNode('msg speech',
+          '<div class="s-head"><span class="s-seat">' + it.seat + '</span>' +
+          '<span class="s-name">' + esc(it.name) + '</span>' +
+          '<span class="s-tag">发言</span></div>' +
+          '<div class="s-body">' + esc(it.text) + '</div>');
+      } else if (it.kind === 'vote') {
+        const line = (it.picks || []).filter(v => v.to != null)
+          .map(v => v.from + '→' + v.to).join('  ');
+        addNode('msg sys', esc('投票' + (it.pk ? '（PK 轮）' : '') + '：' + (line || '全员弃票')));
+      } else if (it.kind === 'lastword') {
+        addNode('msg sys', esc(it.seat + ' 号 ' + it.name + ' 遗言：' + it.text));
+      } else if (it.kind === 'out') {
+        addNode('msg sys', esc(it.seat + ' 号 ' + it.name + ' ' + it.text));
+      } else if (it.kind === 'explode') {
+        addNode('msg sys', esc(it.seat + ' 号 ' + it.name + ' 翻牌自爆，身份是狼人'));
+      }
+    }
+  }
+  if (!rounds.length) msgSys('这一局还没有可回看的记录。');
+  addNode('msg phase', '<div class="p-main">从第 ' + S.round + ' 天接着打</div>');
+  scrollFeed(true);
+}
+
+/* 恢复条：只有存在未打完的存档才出现 */
+function showResumeBar(snap) {
+  hideResumeBar();
+  const aliveN = snap.S.seats.filter(s => s.alive).length;
+  const el = document.createElement('div');
+  el.id = 'resumeBar';
+  el.className = 'resume-bar';
+  el.innerHTML =
+    '<div class="rb-text">上一局没打完：<i>第 ' + snap.S.round + ' 天</i>，' +
+      aliveN + ' 人存活 · ' + snap.S.seats.length + ' 人局</div>' +
+    '<button class="go" id="rbGo">接着打</button>' +
+    '<button id="rbDrop">丢弃</button>';
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  el.querySelector('#rbGo').addEventListener('click', () => { hideResumeBar(); resumeGame(snap); });
+  el.querySelector('#rbDrop').addEventListener('click', () => {
+    clearSnap(); hideResumeBar(); toast('存档已删除');
+  });
+}
+
+function hideResumeBar() {
+  const el = document.getElementById('resumeBar');
+  if (el) el.remove();
+}
+
+async function resumeGame(snap) {
+  CFG = readCfg();
+  const n = snap.S.seats.length;
+  const specs = assignSpecs(n);
+  if (!specs) { toast('模型池是空的，先在右侧填一家模型，再回来接着打'); return; }
+
+  MODE = snap.mode === 'play' ? 'play' : 'watch';
+  HUMAN = snap.human || 0;
+  if (snap.diff && DIFF_META[snap.diff]) DIFF = snap.diff;
+  S = snap.S;
+  S.revealed = false;
+  S.speaking = null;
+  /* 存档里记的是当时那台机器的模型分配。池子换过就按当前的重新摊一遍，
+     否则续跑会打到已经删掉的模型上。 */
+  S.seats.forEach((s, i) => { if (!s.human) s.spec = (specs && specs[i]) || s.spec; });
+  NOTES = {};
+  /* 押注是当场下注当场结算的，跨进程没有意义，注池重置 */
+  BET.chips = 100; BET.round = null; BET.final = null; BET.log = [];
+
+  const id = ++RUN;
+  PAUSED = false;
+  hideHero();
+  hideResumeBar();
+  lockView(MODE === 'play');
+  renderModeUI();
+  renderSeats();
+  renderTable();
+  updateAlive();
+  setPhasePill('night', '夜晚');
+  $('startBtn').disabled = true;
+  $('startBtn').textContent = '对局进行中';
+  $('pauseBtn').disabled = false;
+  $('pauseBtn').textContent = '暂停';
+  $('pauseBtn').classList.remove('on');
+  $('stopBtn').disabled = false;
+  if ($('stopBtn2')) $('stopBtn2').disabled = false;
+  $('exportBtn').disabled = true;
+  const dock = $('betDock');
+  if (dock) dock.style.display = '';
+  updateChips();
+  renderBetPanel();
+
+  rebuildFeed();
+  msgSys('已从存档恢复：第 ' + S.round + ' 天 · ' + n + ' 人局，接着往下打。');
+
+  try {
+    await runRoundLoop(id);
+    finishGame();
+  } catch (e) {
+    if (e instanceof StopGame) {
+      msgSys('对局已中止');
+      setStatus('对局已中止');
+    } else {
+      console.error(e);
+      msgError('对局中断：' + (e && e.message ? e.message : String(e)));
+      setStatus('对局中断，检查接口配置后重试');
+    }
+  } finally {
+    if (id === RUN) {
+      S && (S.revealed = true);
+      S && (S.speaking = null);
+      renderSeats();
+      updateAlive();
+      PAUSED = false;
+      $('startBtn').disabled = false;
+      $('startBtn').textContent = '再来一局';
+      $('pauseBtn').disabled = true;
+      $('stopBtn').disabled = true;
+      $('stopBtn2').disabled = true;
+      $('exportBtn').disabled = !S;
+      clearCurtain();
+      setProgress(0);
+      renderBetPanel();
+    }
+  }
+}
+
+/* 一夜一天的循环。存档写在这里的回合边界上，续跑也是从这里重新进。 */
+async function runRoundLoop(id) {
+  while (true) {
+    await gate(id);
+    saveSnap();
+    setPhasePill('night', '夜晚');
+    await nightPhase(id);
+
+    let w = checkWin();
+    if (w) { S.winner = w; break; }
+
+    await gate(id);
+    await dayPhase(id);
+
+    w = checkWin();
+    if (w) { S.winner = w; break; }
+
+    S.round++;
+    await beat(Math.max(200, paceMs() / 2));
+  }
+}
+
 async function startGame() {
   CFG = readCfg();
+  hideResumeBar();
+  clearSnap();   // 开新局，旧存档作废
   if (typeof TTS !== 'undefined') TTS.probeEdge();   // 后台探一次，不阻塞开局
   const n = Number($('boardSel').value) || 9;
   const specs = assignSpecs(n);
@@ -6318,23 +6601,7 @@ async function startGame() {
     msgEvent('🎴', '身份已发放，各自收到底牌，牌桌上的灯亮了。');
     await beat(300);
 
-    while (true) {
-      await gate(id);
-      setPhasePill('night', '夜晚');
-      await nightPhase(id);
-
-      let w = checkWin();
-      if (w) { S.winner = w; break; }
-
-      await gate(id);
-      await dayPhase(id);
-
-      w = checkWin();
-      if (w) { S.winner = w; break; }
-
-      S.round++;
-      await beat(Math.max(200, paceMs() / 2));
-    }
+    await runRoundLoop(id);
 
     finishGame();
   } catch (e) {
@@ -6387,6 +6654,7 @@ function showEndBanner(goodWin) {
 
 function finishGame() {
   S.revealed = true;
+  clearSnap();   // 打完了，存档没有意义
   BGM.setScene(S.winner === 'good' ? 'over-win' : 'over-lose');
   // 结局背景：狼人胜 / 好人胜 各一张
   document.body.classList.toggle('end-good', S.winner === 'good');
@@ -6623,6 +6891,7 @@ function stopGame() {
   if (!S) return;
   RUN++;
   PAUSED = false;
+  clearSnap();   // 手动中止就是不要这一局了
   TTS.stop();
   TYPER.cancelAll();
   BGM.setScene('');
@@ -6648,6 +6917,7 @@ function resetUI() {
   TTS.stop();
   TYPER.cancelAll();
   BGM.setScene('');
+  clearSnap();
   S = null;
   NOTES = {};
   lockView(false);
@@ -7041,6 +7311,13 @@ CFG = readCfg();
 /* 页面刚打开：首页是静态的 hero，得手动打上 home 标记，
    否则桌面端会按"对局中"的布局把记录栏拉出来，左侧空一块 */
 if ($('hero')) showHero();
+
+/* 上一次没打完：把存档摆出来，让用户自己决定接着打还是丢掉。
+   不自动恢复——自动跑起来比问一句更吓人。 */
+(function () {
+  const snap = readSnap();
+  if (snap) showResumeBar(snap);
+})();
 </script>
 </body>
 </html>
