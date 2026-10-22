@@ -3369,23 +3369,48 @@ const TTS = (() => {
 
   function test() {
     if (!window.speechSynthesis) {
-      toast('当前浏览器不支持语音播报，请用Chrome或Safari打开');
+      toast('❌ 浏览器不支持语音合成', 4000);
       return false;
     }
     const voices = window.speechSynthesis.getVoices();
     const zhVoices = voices.filter(v => /zh|cmn|chinese|中文|普通话/i.test(v.lang + v.name));
     if (!voicesReady || !zhVoice) pickVoice();
-    // 诊断信息
-    const info = `语音列表:${voices.length}个, 中文:${zhVoices.length}个`;
-    console.log('TTS诊断:', info, zhVoices.map(v => v.name + '(' + v.lang + ')'));
+
+    // 把诊断信息显示出来
+    const diag = `语音共${voices.length}个，中文${zhVoices.length}个${zhVoice ? '，已选:' + zhVoice.name.slice(0,12) : ''}`;
+    console.log('TTS诊断:', diag);
+
     if (voices.length === 0) {
-      toast('语音列表为空，正在加载…请再点一次测试');
+      toast('⚠️ 语音列表为空，正在加载…2秒后再点一次测试', 4000);
       // 强制触发语音加载
-      window.speechSynthesis.getVoices();
+      try { window.speechSynthesis.getVoices(); } catch(e) {}
+      setTimeout(pickVoice, 1000);
+      setTimeout(pickVoice, 2000);
       return false;
     }
-    speak('语音播报测试，你能听到我说话吗？', { rate: 1 });
-    return true;
+
+    // 尝试播放
+    try {
+      const utter = new SpeechSynthesisUtterance('语音播报测试，你能听到我说话吗？');
+      utter.rate = 1;
+      utter.pitch = 1;
+      utter.volume = 1;
+      utter.lang = 'zh-CN';
+      if (zhVoice) utter.voice = zhVoice;
+      utter.onstart = () => console.log('TTS started');
+      utter.onend = () => console.log('TTS ended');
+      utter.onerror = (e) => {
+        console.error('TTS error:', e);
+        toast('❌ 播放失败:' + (e.error || 'unknown'), 4000);
+      };
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utter);
+      toast('✅ 正在播放测试语音…' + diag, 3000);
+      return true;
+    } catch (e) {
+      toast('❌ 播放异常:' + e.message, 4000);
+      return false;
+    }
   }
 
   return {
