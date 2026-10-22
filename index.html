@@ -300,10 +300,11 @@ body.is-day .brand-mark{
   opacity:1;filter:saturate(1.02) contrast(1.01) brightness(1.1);
 }
 .stage-bg::after{
-  /* 白天不用照片，直接铺暖白纸面——用户要的是「暖白色调」，暗照片怎么提亮都不够白 */
-  background:
-    radial-gradient(130% 90% at 50% 0%,#fbf5e8,#f4ecdb 52%,#eadfc6);
-  opacity:0;filter:none;
+  /* 白天用 bg-day.jpg：这张图本身偏暗，靠提亮滤镜 + 暖白纱罩做成「阳光照进来的暖白」 */
+  background-image:url(assets/bg-day.jpg);
+  background-position:center 46%;
+  opacity:0;
+  filter:brightness(1.42) saturate(.8) contrast(.92) sepia(.12);
 }
 body.is-day .stage-bg::before{opacity:0}
 body.is-day .stage-bg::after{opacity:1}
@@ -323,10 +324,10 @@ body.is-day .stage-bg::after{opacity:1}
 }
 .stage-bg .shade::after{
   content:'';position:absolute;inset:0;
-  /* 白天：暖白提亮纱罩，不再是压暗的黑纱 */
+  /* 白天：暖白纱罩，把照片压成过曝的暖白观感，但保留窗、书架、绿桌的结构 */
   background:
-    radial-gradient(120% 66% at 50% 4%,rgba(255,250,238,.32),rgba(255,246,228,.22) 62%,rgba(252,243,224,.4)),
-    linear-gradient(180deg,rgba(255,248,233,.12),rgba(255,244,222,.38) 78%);
+    radial-gradient(120% 70% at 50% 0%,rgba(255,250,238,.52),rgba(255,246,228,.34) 60%,rgba(252,242,222,.44)),
+    linear-gradient(180deg,rgba(255,249,236,.3),rgba(255,243,222,.44) 80%);
   transition:opacity 1.4s var(--ease);
   opacity:0;
 }
@@ -3749,6 +3750,7 @@ const BGM = (() => {
 
   /* 八音盒质感的单音：快起慢衰，送一点回声 */
   function note(freq, dur, v, type, echo) {
+    if (!ctx || !master) return;   // 切场景时挂起的音符可能找不到输出节点
     const c = ctx;
     const t0 = c.currentTime;
     const osc = c.createOscillator();
@@ -3767,6 +3769,7 @@ const BGM = (() => {
 
   /* 低音闷响（投票脉动用） */
   function thump(freq, v) {
+    if (!ctx || !master) return;
     const c = ctx;
     const t0 = c.currentTime;
     const osc = c.createOscillator();
