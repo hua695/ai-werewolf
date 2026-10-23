@@ -18,8 +18,21 @@ export async function onRequest(context) {
       return new Response('Missing target parameter', { status: 400, headers: corsHeaders });
     }
 
-    // 构建请求，加必要的header
+    // ── 防 SSRF：这个接口是公开的，不能让任何人拿它去打内网或云元数据 ──
     const targetUrl = new URL(target);
+    if (!/^https?:$/.test(targetUrl.protocol)) {
+      return new Response('Bad protocol', { status: 400, headers: corsHeaders });
+    }
+    const host = targetUrl.hostname.toLowerCase();
+    const isPrivate = /^(localhost|127\.|0\.0\.0\.0|10\.|192\.168\.|169\.254\.|\[?::1\]?)/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+      host.endsWith('.internal') || host.endsWith('.local') ||
+      host === 'metadata.google.internal' || host === '100.100.100.200';
+    if (isPrivate) {
+      return new Response('Forbidden target', { status: 403, headers: corsHeaders });
+    }
+
+    // 构建请求，加必要的header
     const headers = new Headers(request.headers);
     headers.set("Origin", targetUrl.origin);
     headers.set("Referer", targetUrl.origin + "/");

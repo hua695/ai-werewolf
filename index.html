@@ -2502,7 +2502,17 @@ function noteSpecSwap(from, to) {
   else if (typeof toast === 'function') toast(line);
 }
 
-async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
+/* 任务级温度：机器决策（刀人/投票/验人/毒药/开枪）要的是确定性，
+   温度高了会随机乱刀乱投；发言和夜聊要的是活人感，温度低了全部一个腔调。
+   没传 temp 就沿用用户在设置里调的那个值。 */
+const TASK_TEMP = { machine: 0.3, speak: null, chat: 0.85, persona: 1.0, probe: 0 };
+function taskTemp(t) {
+  if (t == null) return null;
+  const v = TASK_TEMP[t];
+  return typeof v === 'number' ? v : null;
+}
+
+async function callLLM({ system, user, runId, maxTokens = 480, spec, temp }) {
   const cfg = CFG;
   const origin = spec || null;
 
@@ -2531,7 +2541,7 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec }) {
         { role: 'system', content: system },
         { role: 'user', content: user }
       ],
-      temperature: cfg.temp,
+      temperature: (typeof temp === 'number' ? temp : cfg.temp),
       max_tokens: maxTokens,
       stream: false
     };
@@ -2965,7 +2975,7 @@ async function genIdentity(seat, spec, id, taken, forcedGender) {
   let data = null;
   let raw = '';
   try {
-    raw = await callLLM({ system: sys, user, runId: id, maxTokens: 860, spec });
+    raw = await callLLM({ system: sys, user, runId: id, maxTokens: 860, spec, temp: taskTemp('persona') });
     data = extractJSON(raw);
   } catch (e) {
     if (e instanceof StopGame) throw e;
@@ -3550,7 +3560,8 @@ async function lastWords(p, id, reason) {
         user: publicState() + '\n\n【遗言】你' + reason + '出局，留最后一到三句话。',
         runId: id,
         maxTokens: 520,
-        spec: p.spec
+        spec: p.spec,
+        temp: 0.8
       });
       const t = String(raw || '').replace(/【[^】]*】/g, '').trim();
       card.set(t || '（沉默着离场）');
@@ -3741,7 +3752,7 @@ const TASK_KIND = {
   witch: 'enum'
 };
 
-function outputContract(task, wolf) {
+function outputContract(task, wolf, p) {
   const len = LEN_SPEC[CFG.speechLen] || LEN_SPEC.normal;
   switch (task) {
     case 'speak': {
@@ -3896,7 +3907,7 @@ function sysPrompt(p, opts) {
     }
   }
 
-  const out = outputContract(task, wolf);
+  const out = outputContract(task, wolf, p);
   if (out.length) lines.push('', ...out);
 
   return lines.join('\n');
@@ -3910,11 +3921,17 @@ function nameOf(n) { const s = seatOf(n); return s ? (s.seat + ' 号 ' + s.name)
    心声和狼人夜聊永远不进这里——那是只有上帝视角和本人能看到的信息。 */
 function publicLogText() {
   if (!S || !S.log || !S.log.length) return '';
+  /* 最近两条发言给全文，更早的才截断。
+     原来所有发言一律切到 75 字，模型看不到上一位的原话，
+     只能把残句再念一遍——复读和空转有一部分就是这么来的。 */
+  const speechIdx = S.log.map((it, i) => (it.kind === 'speech' ? i : -1)).filter(i => i >= 0);
+  const fullIdx = new Set(speechIdx.slice(-2));
   const rows = [];
-  for (const it of S.log) {
+  S.log.forEach((it, idx) => {
+    const lim = fullIdx.has(idx) ? 260 : 75;
     if (it.kind === 'speech') {
       rows.push('第 ' + it.round + ' 天 · ' + it.seat + ' 号 ' + it.name + '：' +
-        clip(String(it.text || '').replace(/\s+/g, ' '), 75));
+        clip(String(it.text || '').replace(/\s+/g, ' '), lim));
     } else if (it.kind === 'lastword') {
       rows.push('第 ' + it.round + ' 天 · ' + it.seat + ' 号 ' + it.name + '（遗言）：' +
         clip(String(it.text || '').replace(/\s+/g, ' '), 55));
@@ -3923,8 +3940,8 @@ function publicLogText() {
         .map(p => p.from + ' → ' + p.to + (p.reason ? '（' + p.reason + '）' : '')).join('，');
       rows.push('第 ' + it.round + ' 天 · 投票' + (it.pk ? '（PK 轮）' : '') + '：' + (line || '全员弃票'));
     }
-  }
-  return rows.slice(-12).join('\n');
+  });
+  return rows.slice(-14).join('\n');
 }
 
 function publicState() {
@@ -4034,7 +4051,8 @@ async function chooseSeat(p, runId, body, cands, spec, task) {
     user: txt,
     runId: runId,
     maxTokens: 96,
-    spec: spec
+    spec: spec,
+    temp: taskTemp('machine')
   });
 
   try {
@@ -5721,7 +5739,8 @@ async function nightPhase(id) {
                 '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
           runId: id,
           maxTokens: 220,
-          spec: w.spec
+          spec: w.spec,
+          temp: taskTemp('chat')
         });
       }
       lines.push(w.name + '（' + w.seat + ' 号）：' + ans);
@@ -5890,7 +5909,8 @@ async function nightPhase(id) {
           ].join('\n'),
           runId: id,
           maxTokens: 64,
-          spec: witch.spec
+          spec: witch.spec,
+          temp: taskTemp('machine')
         });
       } catch (e) {
         // 模型这一夜失灵就当她没用过药，别让整局中断
@@ -6016,7 +6036,8 @@ async function shoot(p, reason, id) {
         ].filter(Boolean).join('\n'),
         runId: id,
         maxTokens: 64,
-        spec: p.spec
+        spec: p.spec,
+        temp: taskTemp('machine')
       });
       const raw = ans.replace(/\s/g, '');
       if (!/^0$/.test(raw) && !/不开枪|放弃/.test(raw)) {
@@ -6611,10 +6632,19 @@ const SNAP_KEY = 'ww.snap';
 function saveSnap() {
   if (!S || S.winner) return;
   try {
+    /* 快照会被整包写进 localStorage，绝不能带 API Key。
+       座位的 spec 只需要记住"这家/这个模型"，恢复时 resumeGame 会用
+       当前的模型池重新分配（assignSpecs），本来也不依赖快照里的 Key。 */
+    const seats = S.seats.map(s => {
+      if (!s || !s.spec) return s;
+      return Object.assign({}, s, {
+        spec: { provider: s.spec.provider, model: s.spec.model }
+      });
+    });
     localStorage.setItem(SNAP_KEY, JSON.stringify({
-      v: 1, at: Date.now(),
+      v: 2, at: Date.now(),
       mode: MODE, human: HUMAN, diff: DIFF,
-      S: S
+      S: Object.assign({}, S, { seats })
     }));
   } catch (e) { console.warn('快照写入失败', e); }
 }
@@ -6622,7 +6652,10 @@ function saveSnap() {
 function readSnap() {
   try {
     const o = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null');
-    if (!o || o.v !== 1 || !o.S || !Array.isArray(o.S.seats) || !o.S.seats.length) return null;
+    /* v1 的快照把整个 spec（含 API Key）写进了 localStorage，v2 起只存 provider+model。
+       碰到 v1 直接丢掉并顺手清盘，旧数据里的 Key 不留在浏览器里。 */
+    if (o && o.v !== 2) { clearSnap(); return null; }
+    if (!o || !o.S || !Array.isArray(o.S.seats) || !o.S.seats.length) return null;
     if (o.S.winner) return null;
     return o;
   } catch (e) { return null; }
@@ -7336,7 +7369,8 @@ async function testAll() {
         user: '只回复两个字：就绪',
         runId: RUN,
         maxTokens: 200,
-        spec: p
+        spec: p,
+        temp: taskTemp('probe')
       });
       setSt('ok', '✓ 可用 · ' + clip(reply.replace(/\s+/g, ''), 18));
       ok++;
