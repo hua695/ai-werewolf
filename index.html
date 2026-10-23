@@ -340,6 +340,47 @@ body.is-day .stage-bg .shade::after{opacity:1}
 .roles-legend span{display:inline-flex;align-items:center;gap:5px}
 .roles-legend .rl-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .roles-legend .rl-right{margin-left:auto;color:var(--gold)}
+
+/* ══════════ 模型天梯 ══════════ */
+.ladder-list{display:flex;flex-direction:column;gap:9px}
+.ladder-row{
+  padding:10px 12px;border-radius:var(--r-md);
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+  border:1px solid var(--line);
+}
+.ladder-row.low{opacity:.62}
+.lr-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.lr-head b{font-size:12.5px;letter-spacing:.02em}
+.lr-low{
+  font-size:9.5px;padding:1px 6px;border-radius:999px;
+  background:rgba(217,169,75,.14);color:var(--gold);letter-spacing:.06em;
+}
+.lr-cost{margin-left:auto;font-size:11px;color:var(--text-3)}
+.lr-line{display:flex;align-items:center;gap:9px}
+.ld-track{
+  flex:1;height:9px;border-radius:5px;overflow:hidden;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.05);
+}
+.ld-track i{display:block;height:100%;border-radius:5px}
+.lr-num{font-size:11px;color:var(--text-2);flex-shrink:0;min-width:64px;text-align:right}
+.lr-meta{
+  display:flex;flex-wrap:wrap;gap:5px 12px;margin-top:6px;
+  font-size:10.5px;color:var(--text-3);letter-spacing:.02em;
+}
+.lr-meta .warn{color:#e0a05c}
+
+/* 战报剧本：一条段一块，读起来是"戏"而不是日志 */
+.story-box{max-height:52vh;overflow-y:auto;padding-right:6px}
+.story-box p{
+  font-family:var(--serif);font-size:14px;line-height:2;color:var(--text-2);
+  margin:0 0 14px;letter-spacing:.02em;text-align:justify;
+}
+.story-box p:last-child{margin-bottom:0}
+
+/* 回放模式：只读，圆桌和首页大标题都退场，记录栏占满讲这一局的故事 */
+body.replay-mode .hero{display:none}
+body.replay-mode .round-table{display:none}
+body.replay-mode .stage-bg{left:0}
 .roles-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .role-cell{
   display:flex;flex-direction:column;gap:2px;padding:9px 11px;border-radius:9px;
@@ -1866,6 +1907,7 @@ body.is-day .bet-panel{
     <button class="icon-btn" id="fastBtn" title="快进，按 F 也能切">快进</button>
     <button class="icon-btn" id="noteBtn" title="记牌板：票型、狼面分、随手记">笔记</button>
     <button class="icon-btn" id="rolesBtn" title="身份表：一眼看全场的身份与阵营">身份表</button>
+    <button class="icon-btn" id="ladderBtn" title="模型天梯：各家模型的胜率、泄漏率、划水率（跨局累积）">天梯</button>
     <button class="icon-btn on" id="viewBtn" title="切换观众视角与选手视角">上帝视角</button>
     <button class="icon-btn" id="pauseBtn" disabled>暂停</button>
     <button class="icon-btn" id="stopBtn" disabled>停止</button>
@@ -2662,6 +2704,7 @@ function noteModelLeak(spec) {
   const st = MODEL_STAT.get(k) || { calls: 0, leaks: 0 };
   st.leaks++;
   MODEL_STAT.set(k, st);
+  if (SPEC_STATS.has(k)) SPEC_STATS.get(k).leaks++;
   if (st.calls < 4 || st.leaks / st.calls < 0.25) return;
   const p = modelProfile(spec);
   /* 注意判断的是 jsonOut 不是 leaky：推理模型一开始 leaky 就是 true，
@@ -2790,12 +2833,123 @@ function rescueFromThinking(reasoning) {
   return paras.length ? paras[paras.length - 1] : '';
 }
 
-function trackUsage(u) {
+/* ============================================================
+   各家价格表（元 / 百万 token，输入·输出）
+   数字是公开刊例的近似值，用来给用户一个"这局烧了多少"的量级感，
+   不是计费依据。用户在成本账单里能看到用了哪家、多少 token，
+   真要算账以各家账单为准。
+   ============================================================ */
+const MODEL_PRICE = {
+  'deepseek|deepseek-flash': { in: 0.14, out: 0.28, note: '缓存命中更低' },
+  'deepseek|deepseek-v4-pro': { in: 2.0, out: 8.0 },
+  'doubao|doubao-seed-2-1-lite': { in: 0.3, out: 0.6 },
+  'doubao|doubao-seed-2-1-turbo-260628': { in: 0.8, out: 2.0 },
+  'doubao|doubao-seed-2-1-pro-260915': { in: 2.0, out: 8.0 },
+  'kimi|kimi-k3': { in: 2.0, out: 8.0 },
+  'kimi|kimi-k2.7-code': { in: 2.0, out: 8.0 },
+  'kimi|kimi-k2.7-code-highspeed': { in: 2.0, out: 8.0 },
+  'kimi|kimi-k2.6': { in: 2.0, out: 8.0 },
+  'zhipu|glm-5.3-flash': { in: 0.1, out: 0.4 },
+  'zhipu|glm-5.3': { in: 2.0, out: 8.0 },
+  'zhipu|glm-5.2': { in: 2.0, out: 8.0 },
+  'qwen|qwen3.8-flash': { in: 0.2, out: 0.6 },
+  'qwen|qwen3.8-max': { in: 2.4, out: 9.6 },
+  'qwen|qwen3.7-plus': { in: 0.8, out: 2.0 },
+  'hunyuan|hy4-preview': { in: 1.0, out: 4.0 },
+  'hunyuan|hy3': { in: 1.0, out: 4.0 },
+  'hunyuan|hunyuan-role-latest': { in: 1.0, out: 4.0 }
+};
+const PRICE_DEFAULT = { in: 1.0, out: 4.0 };   // 认不出的型号按这个估，并在界面上标注"估价"
+
+function priceOf(spec) {
+  const k = specKey(spec);
+  return MODEL_PRICE[k] || PRICE_DEFAULT;
+}
+
+/* 按"元/百万 token"算钱。token 数除以一百万再乘单价。 */
+function costYuan(spec, prompt, completion) {
+  const p = priceOf(spec);
+  return (prompt / 1e6) * p.in + (completion / 1e6) * p.out;
+}
+
+/* ============================================================
+   per-model 统计
+   模型天梯和成本账单共用这一份地基。跨局累积，落 localStorage。
+   注意只记"provider|model"，不记 Key——天梯是给大家看的，
+   别把密钥混进任何会展示或分享的数据里。
+   ============================================================ */
+const LADDER_KEY = 'ww.ladder';
+const SPEC_STATS = new Map();   // 本局：provider|model -> 累加值
+
+function specStat(spec) {
+  const k = specKey(spec);
+  let st = SPEC_STATS.get(k);
+  if (!st) {
+    st = {
+      key: k, provider: (spec || {}).provider || '', model: (spec || {}).model || '',
+      calls: 0, prompt: 0, completion: 0,
+      seats: new Set(),      // 本局坐了哪些座位
+      wolves: 0, goods: 0,   // 当狼/当好人次数
+      wins: 0,               // 赢的局数（按座位归属）
+      leaks: 0,              // 思考泄漏被抢救/丢弃的次数
+      thin: 0                // 划水（没有具体指认）的次数
+    };
+    SPEC_STATS.set(k, st);
+  }
+  return st;
+}
+
+/* 读跨局天梯。结构平铺，方便直接渲染和合并。 */
+function readLadder() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LADDER_KEY) || '{}');
+    return (o && typeof o === 'object' && o.v === 1) ? o : { v: 1, games: 0, models: {} };
+  } catch (e) { return { v: 1, games: 0, models: {} }; }
+}
+
+function writeLadder(l) {
+  try { localStorage.setItem(LADDER_KEY, JSON.stringify(l)); } catch (e) { /* 隐私模式下忽略 */ }
+}
+
+/* 一局结束时把本局数据并进天梯。 */
+function mergeLadder() {
+  if (!SPEC_STATS.size) return;
+  const l = readLadder();
+  l.games = (l.games || 0) + 1;
+  SPEC_STATS.forEach((st, k) => {
+    const d = l.models[k] || (l.models[k] = {
+      key: k, provider: st.provider, model: st.model,
+      calls: 0, prompt: 0, completion: 0, seats: 0,
+      wolves: 0, goods: 0, wins: 0, leaks: 0, thin: 0
+    });
+    d.calls += st.calls;
+    d.prompt += st.prompt;
+    d.completion += st.completion;
+    d.seats += st.seats.size;
+    d.wolves += st.wolves;
+    d.goods += st.goods;
+    d.wins += st.wins;
+    d.leaks += st.leaks;
+    d.thin += st.thin;
+  });
+  writeLadder(l);
+}
+
+function trackUsage(u, spec) {
   if (!u) return;
   CALL_STATS.calls++;
   CALL_STATS.prompt += u.prompt_tokens || 0;
   CALL_STATS.completion += u.completion_tokens || 0;
   $('tokenText').innerHTML = 'Token <b>' + (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString() + '</b>';
+  /* 顺手按模型累加，成本账单和天梯都靠这个。
+     注意这里只碰内存里的 SPEC_STATS，不写 localStorage——
+     一局结束时才 mergeLadder() 一次性落盘，省得每句请求都序列化。 */
+  if (spec && spec.model) {
+    const st = specStat(spec);
+    st.calls++;
+    st.prompt += u.prompt_tokens || 0;
+    st.completion += u.completion_tokens || 0;
+  }
 }
 
 /* 英文思维链泄漏：混元这类模型会把推理原文写进 content。
@@ -3038,7 +3192,7 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task,
           throw new Error('HTTP ' + res.status + ' ' + clip(txt, 160));
         }
         const data = await res.json();
-        trackUsage(data.usage);
+        trackUsage(data.usage, sp);
         const msg = data.choices && data.choices[0] && data.choices[0].message;
         const rawContent = msg && typeof msg.content === 'string' ? msg.content : '';
         // 各家叫法不一样：reasoning_content / reasoning / thinking
@@ -6201,6 +6355,15 @@ function initGame(seats, specs) {
     startedAt: Date.now(),
     log: []
   };
+  /* 新局重置按模型的统计。座位与身份（狼/好人）在这里记下，
+     胜负在 finishGame 里按 winner 累加。 */
+  SPEC_STATS.clear();
+  S.seats.forEach(sp => {
+    if (!sp || !sp.spec || !sp.spec.model) return;
+    const st = specStat(sp.spec);
+    st.seats.add(sp.seat);
+    if (isWolfRole(sp.role)) st.wolves++; else st.goods++;
+  });
   CALL_STATS = { calls: 0, prompt: 0, completion: 0 };
   $('tokenText').innerHTML = 'Token <b>0</b>';
   feedEl().innerHTML = '';
@@ -6857,6 +7020,7 @@ async function dayPhase(id) {
         /* 划水硬校验：没有点到具体的人 / 太短 → 走一次便宜的补句。
            比重说全段便宜一个量级，只要求补一句指认。 */
         if (speechIsThin(p, sp.body)) {
+          if (p.spec) { const lst = SPEC_STATS.get(specKey(p.spec)); if (lst) lst.thin++; }
           godMsg(p.name + ' 这轮发言没有给出具体指认，已要求补一句', '⚠️');
           try {
             const patch = await callLLM({
@@ -7835,7 +7999,91 @@ function openRolesPanel() {
   $('modal').classList.add('show');
 }
 
+/* ============================================================
+   模型天梯：跨局累积的 per-model 表现。
+   多 Key 用户天然想做 A/B——这里给出做实验的理由和晒的理由：
+   「DeepSeek 当狼胜率 71%」「混元划水率 23%」这类数字，一眼可比。
+   只记 provider|model，不记名字不记 Key，可以放心展示与分享。
+   ============================================================ */
+function openLadder() {
+  const l = readLadder();
+  const models = Object.values(l.models || {});
+  const body = $('modalBody');
+  if (!models.length) {
+    body.innerHTML = '<div class="hint" style="padding:14px 4px">还没有积累数据。打完一局就会按座位记录各家模型的表现。</div>';
+    $('modalTitle').textContent = '模型天梯';
+    $('modal').classList.add('show');
+    return;
+  }
+  // 至少出场过一次的才进榜，按胜率排（出场 <2 的胜率不可信，沉底但仍显示）
+  const rows = models.map(d => {
+    const total = d.wolves + d.goods;
+    const winRate = d.wolves + d.goods > 0 ? d.wins / total : 0;
+    const wolfRate = d.seats > 0 ? d.wolves / d.seats : 0;
+    const leakRate = d.calls > 0 ? d.leaks / d.calls : 0;
+    const thinRate = d.calls > 0 ? d.thin / d.calls : 0;
+    const yuan = costYuan({ provider: d.provider, model: d.model }, d.prompt, d.completion);
+    return { d, total, winRate, wolfRate, leakRate, thinRate, yuan, trust: d.seats >= 2 };
+  }).sort((a, b) => (b.trust - a.trust) || (b.winRate - a.winRate));
+
+  const maxWin = Math.max(0.01, ...rows.map(r => r.winRate));
+  const bar = (v, color) =>
+    '<span class="ld-track"><i style="width:' + Math.round(v / maxWin * 100) + '%;background:' + color + '"></i></span>';
+
+  body.innerHTML =
+    '<div class="roles-legend">' +
+      '<span>累计 ' + l.games + ' 局</span>' +
+      '<span class="rl-right"><span class="eb-btn" id="ladderClear">清空数据</span></span>' +
+    '</div>' +
+    '<div class="ladder-list">' +
+      rows.map(r => {
+        const label = esc(r.d.provider + ' · ' + r.d.model);
+        return '<div class="ladder-row' + (r.trust ? '' : ' low') + '">' +
+          '<div class="lr-head">' +
+            '<b>' + label + '</b>' +
+            (r.trust ? '' : '<span class="lr-low">样本少</span>') +
+            '<span class="lr-cost">≈ ¥' + (r.yuan < 0.01 ? r.yuan.toFixed(4) : r.yuan.toFixed(2)) + '</span>' +
+          '</div>' +
+          '<div class="lr-line">' + bar(r.winRate, 'linear-gradient(90deg,#d4553f,#b23a29)') +
+            '<span class="lr-num">' + Math.round(r.winRate * 100) + '% 胜率</span></div>' +
+          '<div class="lr-meta">' +
+            '<span>出场 ' + r.total + ' 次（狼 ' + r.wolves + ' / 好 ' + r.goods + '）</span>' +
+            '<span>胜 ' + r.d.wins + '</span>' +
+            '<span class="' + (r.leakRate > 0.2 ? 'warn' : '') + '">思考泄漏 ' + Math.round(r.leakRate * 100) + '%</span>' +
+            '<span class="' + (r.thinRate > 0.3 ? 'warn' : '') + '">划水 ' + Math.round(r.thinRate * 100) + '%</span>' +
+            '<span>' + (r.d.prompt + r.d.completion).toLocaleString() + ' token</span>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hint" style="margin-top:10px">胜率按座位归属统计，跨局累积存在本机；估算费用按公开刊例近似值折算，实际以各家账单为准。</div>';
+  const clear = body.querySelector('#ladderClear');
+  if (clear) clear.addEventListener('click', () => {
+    writeLadder({ v: 1, games: 0, models: {} });
+    toast('天梯已清空');
+    openLadder();
+  });
+  $('modalTitle').textContent = '模型天梯';
+  $('modal').classList.add('show');
+}
+
 /* 结局浮层：胜负 + 天数 + token，居中压在胜利背景上 */
+/* 本局成本账单：按各家价格把 token 换算成钱。
+   单价是刊例近似值，界面上明确写「估算」，真要算账以各家账单为准。 */
+function costSummary() {
+  let total = 0;
+  let top = null;
+  const rows = [];
+  SPEC_STATS.forEach(st => {
+    const yuan = costYuan({ provider: st.provider, model: st.model }, st.prompt, st.completion);
+    total += yuan;
+    rows.push({ st, yuan });
+    if (!top || yuan > top.yuan) top = { st, yuan };
+  });
+  rows.sort((a, b) => b.yuan - a.yuan);
+  return { total, top, rows };
+}
+
 function showEndBanner(goodWin) {
   const old = document.getElementById('endBanner');
   if (old) old.remove();
@@ -7843,13 +8091,20 @@ function showEndBanner(goodWin) {
   el.id = 'endBanner';
   el.className = 'end-banner ' + (goodWin ? 'good' : 'wolf');
   const tokens = (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString();
+  const bill = costSummary();
+  const billLine = bill.total > 0
+    ? '消耗 ' + tokens + ' token ≈ ¥' + (bill.total < 0.01 ? bill.total.toFixed(4) : bill.total.toFixed(2)) +
+      (bill.top ? ' · 最贵 ' + bill.top.st.provider + '·' + bill.top.st.model : '')
+    : '消耗 ' + tokens + ' token';
   el.innerHTML =
     '<div class="eb-inner">' +
       '<div class="eb-title">' + (goodWin ? '好人阵营胜利' : '狼人阵营胜利') + '</div>' +
-      '<div class="eb-sub">共进行 ' + S.round + ' 天 · 消耗 ' + tokens + ' token</div>' +
+      '<div class="eb-sub">共进行 ' + S.round + ' 天 · ' + esc(billLine) + '</div>' +
       '<div class="eb-actions">' +
         '<span class="eb-btn" id="ebReveal">查看复盘</span>' +
         '<span class="eb-btn" id="ebSave">保存战报</span>' +
+        '<span class="eb-btn" id="ebStory">战报剧本</span>' +
+        '<span class="eb-btn" id="ebShare">复制回放链接</span>' +
       '</div>' +
     '</div>';
   $('stage').appendChild(el);
@@ -7857,6 +8112,182 @@ function showEndBanner(goodWin) {
   if (btn) btn.addEventListener('click', () => openReveal());
   const sb = el.querySelector('#ebSave');
   if (sb) sb.addEventListener('click', () => saveReport());
+  const story = el.querySelector('#ebStory');
+  if (story) story.addEventListener('click', () => tellStory());
+  const share = el.querySelector('#ebShare');
+  if (share) share.addEventListener('click', () => shareReplayLink());
+}
+
+/* ============================================================
+   战报剧本：一次 LLM 调用，把整局写成第三人称小剧本。
+   用户的原话是"产品名字就叫混战，用户要看的戏"——
+   战报图是留给自己存的，剧本是发给朋友看的，两个东西服务两种分享。
+   ============================================================ */
+async function tellStory() {
+  if (!S || !S.log || !S.log.length) { toast('这一局还没有内容可写'); return; }
+  const btn = document.getElementById('ebStory');
+  if (btn) { btn.textContent = '写剧本中…'; btn.style.pointerEvents = 'none'; }
+  try {
+    // 只把公开信息喂给模型：发言、投票、出局。心声绝不入 prompt——
+    // 剧本要发给别人看，作者（模型）能看到底牌不等于读者该看到。
+    const lines = [];
+    S.log.forEach(it => {
+      if (it.kind === 'speech') lines.push('第' + it.round + '天 · ' + it.seat + '号 ' + it.name + '：「' + clip(String(it.text || '').replace(/\s+/g, ' '), 140) + '」');
+      else if (it.kind === 'vote') {
+        const picks = (it.picks || []).filter(p => p.to != null).map(p => p.from + '→' + p.to).join('，');
+        lines.push('第' + it.round + '天 · 投票' + (it.pk ? '（PK）' : '') + '：' + (picks || '全员弃票'));
+      } else if (it.kind === 'explode') lines.push('第' + it.round + '天 · ' + it.seat + '号 ' + it.name + ' 自爆出局');
+    });
+    const roles = S.seats.map(s =>
+      s.seat + '号 ' + s.name + ' = ' + ((ROLE_META[s.role] || {}).name || s.role) +
+      '（' + specLabel(s.spec) + (s.human ? '，真人' : '') + '）').join('；');
+    const wolves = S.seats.filter(s => isWolfRole(s.role)).map(s => s.seat + '号 ' + s.name).join('、');
+    const story = await callLLM({
+      system: '你是狼人杀比赛的解说，把对局整理成一篇第三人称小剧本。',
+      user: [
+        '身份底牌（只有你知道，剧透请留到复盘段）：狼人是 ' + wolves + '。',
+        '全部座位：' + roles,
+        '胜负：' + (S.winner === 'good' ? '好人阵营胜利' : '狼人阵营胜利') + '，共 ' + S.round + ' 天。',
+        '对局记录：',
+        lines.join('\n'),
+        '',
+        '请写一篇 300 到 500 字的第三人称小剧本，要求：',
+        '一、按时间讲戏，重点写"谁在骗谁""票怎么反转""哪句话是转折"，不要流水账；',
+        '二、可以引用一句最有戏的原话；',
+        '三、最后一段复盘：揭晓狼人是谁、他们是怎么赢（或输）的；',
+        '四、只输出正文，不要标题、不要 markdown 符号。'
+      ].join('\n'),
+      runId: RUN,
+      temp: 0.7,
+      maxTokens: 1400,
+      task: 'speak'
+    });
+    const text = String(story || '').replace(/【[^】]*】/g, '').trim() || '（这次没写出剧本，稍后再试一次）';
+    openStoryModal(text);
+  } catch (e) {
+    if (e instanceof StopGame) { toast('对局已中止，剧本只写到一半'); return; }
+    toast('剧本没写出来：' + clip(e.message || e, 60));
+  } finally {
+    if (btn) { btn.textContent = '战报剧本'; btn.style.pointerEvents = ''; }
+  }
+}
+
+function openStoryModal(text) {
+  const body = $('modalBody');
+  body.innerHTML = '<div class="story-box">' + esc(text).split(/\n+/).map(p =>
+    p.trim() ? '<p>' + p + '</p>' : '').join('') + '</div>' +
+    '<div class="btn-row"><button class="btn ghost" id="storyCopy">复制全文</button>' +
+    '<button class="btn ghost" id="storyDl">下载 .txt</button></div>';
+  body.querySelector('#storyCopy').addEventListener('click', () => {
+    navigator.clipboard.writeText(text).then(() => toast('已复制'), () => toast('复制失败，手动选文本吧'));
+  });
+  body.querySelector('#storyDl').addEventListener('click', () => {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '狼人杀剧本-' + new Date().toISOString().slice(0, 10) + '.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  });
+  $('modalTitle').textContent = '战报剧本';
+  $('modal').classList.add('show');
+}
+
+/* ============================================================
+   战报链接化：把整局压缩进 URL hash，发给朋友打开就是回放。
+   不耗 API、不需要 Key、不需要后端——分享这个诉求先靠它满足。
+   注意浏览器对 URL 长度有限制（约 6 万字符），超长就提示走导出。
+   ============================================================ */
+function buildReplayHash() {
+  const data = {
+    v: 1,
+    n: S.seats.length,
+    w: S.winner,
+    seats: S.seats.map(s => ({
+      s: s.seat, n: s.name, r: s.role,
+      m: s.spec ? specKey(s.spec) : (s.human ? '真人' : ''),
+      out: s.outRound, why: s.outReason
+    })),
+    log: S.log.map(it => {
+      if (it.kind === 'speech') return [0, it.round, it.seat, it.name, it.text];
+      if (it.kind === 'lastword') return [1, it.round, it.seat, it.name, it.text];
+      /* 投票统一五元组：k, round, pk, seat(null), picks。解析端只认 extra。 */
+      if (it.kind === 'vote') return [2, it.round, it.pk ? 1 : 0, null, (it.picks || []).filter(p => p.to != null).map(p => [p.from, p.to, p.reason || ''])];
+      if (it.kind === 'explode') return [3, it.round, it.seat, it.name, ''];
+      return null;
+    }).filter(Boolean)
+  };
+  return encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(data)))));
+}
+
+function shareReplayLink() {
+  if (!S || !S.log) { toast('还没有对局可以分享'); return; }
+  const hash = buildReplayHash();
+  if (hash.length > 50000) {
+    toast('这一局太长，链接放不下（' + hash.length + ' 字符），用「导出」吧');
+    return;
+  }
+  const url = location.href.split('#')[0] + '#r=' + hash;
+  navigator.clipboard.writeText(url).then(
+    () => toast('回放链接已复制，发给朋友打开就能看'),
+    () => {
+      // 剪贴板被拒（file:// 或权限）：退而求其次弹一个可复制的框
+      const body = $('modalBody');
+      body.innerHTML = '<div class="hint">复制下面这条链接发给朋友：</div>' +
+        '<textarea class="ta" readonly style="min-height:120px;margin-top:8px">' + esc(url) + '</textarea>';
+      $('modalTitle').textContent = '回放链接';
+      $('modal').classList.add('show');
+    });
+}
+
+/* 带 #r= 的 URL：进入只读回放模式。不碰 POOL，不发任何请求。 */
+function tryOpenReplay() {
+  const m = /^#r=(.+)$/.exec(location.hash || '');
+  if (!m) return false;
+  let data = null;
+  try {
+    data = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))));
+  } catch (e) { toast('回放链接解析失败'); return false; }
+  if (!data || !Array.isArray(data.log) || !Array.isArray(data.seats)) { toast('回放链接不完整'); return false; }
+  const meta = ROLE_META;
+  document.body.classList.remove('home');
+  document.body.classList.add('replay-mode');
+  feedEl().innerHTML = '';
+  msgSys('▶ 回放模式 · ' + (data.w === 'good' ? '好人阵营胜利' : '狼人阵营胜利') + ' · 共 ' +
+    (Math.max.apply(null, [0].concat(data.log.map(x => x[1] || 1)))) + ' 天 · 只读，不消耗任何 API');
+  data.seats.forEach(sp => {
+    const roleMeta = meta[sp.r] || { name: sp.r, color: '#8b93a5' };
+    addNode('msg seatdrop',
+      '<svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="19" fill="' + roleMeta.color + '22" stroke="' + roleMeta.color + '"/><text x="20" y="26" text-anchor="middle" font-size="16" fill="' + roleMeta.color + '">' + sp.s + '</text></svg>' +
+      '<div class="sd-txt"><b>' + esc(sp.n) + '</b> <i>' + esc(roleMeta.name) + (sp.m ? ' · ' + esc(sp.m) : '') + '</i>' +
+      (sp.out ? ' <i>第' + sp.out + '天 ' + esc(sp.why || '出局') + '</i>' : ' <i>存活</i>') + '</div>');
+  });
+  // 日志按天铺回，每跨一天插一个分界标题，读起来才有"第几天的戏"的节奏
+  let lastRound = 0;
+  data.log.forEach(it => {
+    const [k, round, seat, name, extra] = it;
+    if (round && round !== lastRound) {
+      lastRound = round;
+      addNode('msg phase day', '<div class="p-main">第 ' + round + ' 天</div><div class="p-sub">回放</div>');
+    }
+    if (k === 0) {
+      addNode('msg speech',
+        '<div class="s-head"><span class="s-seat">' + seat + '</span>' +
+        '<span class="s-name">' + esc(name) + '</span></div>' +
+        '<div class="s-body">' + esc(String(extra || '').replace(/【[^】]*】/g, '').trim()) + '</div>');
+    } else if (k === 1) {
+      addNode('msg event', '<span class="e-ico">🕯️</span><span>' + esc(name) + '（遗言）：' + esc(String(extra || '')) + '</span>');
+    } else if (k === 2) {
+      const picks = (extra || []).map(p => p[0] + ' 号 → ' + p[1] + ' 号' + (p[2] ? '（' + esc(p[2]) + '）' : '')).join('，');
+      addNode('msg sys', esc('投票' + (it[2] ? '（PK）' : '') + '：' + (picks || '全员弃票')));
+    } else if (k === 3) {
+      addNode('msg event hot', '<span class="e-ico">💥</span><span>' + esc(name) + ' 翻牌自爆——他就是狼人！</span>');
+    }
+  });
+  msgSys('回放结束。想开自己的对局，刷新页面即可。');
+  const eb = document.getElementById('endBanner');
+  if (eb) eb.remove();
+  return true;
 }
 
 /* 战报图：把这一局的结果画成一张能存下来的图。
@@ -8028,6 +8459,18 @@ function roundRect(g, x, y, w, h, r) {
 function finishGame() {
   S.revealed = true;
   clearSnap();   // 打完了，存档没有意义
+  /* 天梯结算：按座位与胜负累加进跨局数据。只记 provider|model，
+     不带名字带 Key——这份东西是要展示和分享的。 */
+  const goodWon = S.winner === 'good';
+  S.seats.forEach(sp => {
+    if (!sp || !sp.spec || !sp.spec.model) return;
+    const st = SPEC_STATS.get(specKey(sp.spec));
+    if (st && st.seats.has(sp.seat)) {
+      const wolfWon = !goodWon;
+      if ((isWolfRole(sp.role) && wolfWon) || (!isWolfRole(sp.role) && goodWon)) st.wins++;
+    }
+  });
+  mergeLadder();
   BGM.setScene(S.winner === 'good' ? 'over-win' : 'over-lose');
   // 结局背景：狼人胜 / 好人胜 各一张
   document.body.classList.toggle('end-good', S.winner === 'good');
@@ -8555,6 +8998,7 @@ feedEl().addEventListener('click', e => {
 /* 记牌板 */
 $('noteBtn').addEventListener('click', openNotes);
 $('rolesBtn').addEventListener('click', openRolesPanel);
+$('ladderBtn').addEventListener('click', openLadder);
 $('noteClose').addEventListener('click', () => $('noteModal').classList.remove('show'));
 $('noteModal').addEventListener('click', e => {
   if (e.target === $('noteModal')) $('noteModal').classList.remove('show');
@@ -8726,6 +9170,10 @@ if ($('hero')) showHero();
   const snap = readSnap();
   if (snap) showResumeBar(snap);
 })();
+
+/* 带 #r= 的链接：进只读回放。优先级最高——分享出去的链接永远打开是回放，
+   不能被首页布局盖掉；也不读任何存档（回放和本机对局是两个世界）。 */
+if (tryOpenReplay()) { /* 回放模式接管了页面 */ }
 </script>
 </body>
 </html>
