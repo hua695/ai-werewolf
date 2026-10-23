@@ -294,7 +294,9 @@ body.is-day .brand-mark{
 body.home .stage-bg{opacity:1}
 .stage-bg::before,.stage-bg::after{
   content:'';position:absolute;inset:0;background-size:cover;
-  transition:opacity 1.4s var(--ease),filter 1.4s var(--ease);
+  /* 3.2 秒的交叉淡化。幕布只是半透明薄纱，天色渐变主要靠这层
+     慢慢换图来完成——太快就又回到"黑一下换好了"的僵硬感 */
+  transition:opacity 3.2s var(--ease),filter 3.2s var(--ease);
 }
 .stage-bg::before{
   background-image:url(assets/bg/bg-night.jpg);background-position:center 24%;
@@ -312,7 +314,7 @@ body.is-day .stage-bg::after{opacity:1}
 /* 压场遮罩：夜里是冷黑，白天换暖棕，白天一眼就能看出来 */
 .stage-bg .shade{
   position:absolute;inset:0;
-  transition:opacity 1.4s var(--ease);
+  transition:opacity 3s var(--ease);
   opacity:1;
 }
 .stage-bg .shade::before{
@@ -320,7 +322,7 @@ body.is-day .stage-bg::after{opacity:1}
   background:
     radial-gradient(120% 66% at 50% 4%,rgba(8,11,17,.1),rgba(8,11,17,.42) 62%,rgba(6,9,14,.72)),
     linear-gradient(180deg,rgba(6,9,14,.03),rgba(6,9,14,.5) 78%);
-  transition:opacity 1.4s var(--ease);
+  transition:opacity 3s var(--ease);
   opacity:1;
 }
 .stage-bg .shade::after{
@@ -329,7 +331,7 @@ body.is-day .stage-bg::after{opacity:1}
   background:
     radial-gradient(120% 70% at 50% 0%,rgba(255,250,238,.52),rgba(255,246,228,.34) 60%,rgba(252,242,222,.44)),
     linear-gradient(180deg,rgba(255,249,236,.3),rgba(255,243,222,.44) 80%);
-  transition:opacity 1.4s var(--ease);
+  transition:opacity 3s var(--ease);
   opacity:0;
 }
 body.is-day .stage-bg .shade::before{opacity:0}
@@ -393,6 +395,11 @@ body.replay-mode .stage-bg{left:0}
 .role-cell .rc-seat{font-size:10px;color:var(--text-3);letter-spacing:.1em}
 .role-cell .rc-role{font-size:15px;font-weight:700;letter-spacing:.04em}
 .role-cell .rc-name{font-size:12.5px;color:var(--text)}
+.role-cell .rc-model{
+  font-size:9.5px;letter-spacing:.03em;color:var(--gold);
+  padding:1px 6px;border-radius:999px;
+  background:rgba(217,169,75,.12);border:1px solid rgba(217,169,75,.2);
+}
 .role-cell .rc-camp{font-size:10.5px;color:var(--text-3)}
 .role-cell .rc-state{font-size:10px;color:var(--text-3);margin-top:2px}
 @media (max-width:620px){ .roles-grid{grid-template-columns:repeat(2,1fr)} }
@@ -401,7 +408,7 @@ body.replay-mode .stage-bg{left:0}
 .stage-bg .end-bg{
   position:absolute;inset:0;opacity:0;pointer-events:none;
   background-size:cover;background-position:center 32%;
-  transition:opacity 1.4s var(--ease);
+  transition:opacity 3s var(--ease);
 }
 body.end-wolf .stage-bg .end-bg{
   opacity:1;
@@ -646,7 +653,7 @@ body.is-day .msg.vote-line .vl-to{color:#8a6410}
 .role-back{transform:rotateY(180deg)}
 
 /* 昼夜切换过渡 */
-body{transition:background .8s var(--ease)}
+body{transition:background 2.4s var(--ease)}
 body.night-mode{background:linear-gradient(180deg,#05070b 0%,#0a0e18 100%)}
 body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
 
@@ -848,12 +855,17 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 /* ══════════ 幕布 ══════════ */
 .curtain{
   position:absolute;inset:0;z-index:20;display:grid;place-items:center;
-  background:radial-gradient(circle at 50% 50%,#0a0f1a 0%,#05070b 72%);
-  opacity:0;pointer-events:none;transition:opacity .42s var(--ease);
+  /* 天色过渡：原来是一整块不透明黑幕一盖一开，切换发生在被完全遮住时，
+     观众只能看到"黑一下→换好了"，所以觉得僵硬。改成半透明色温薄纱——
+     入夜是黄昏橙压向深蓝，天亮是黎明蓝压向暖白——纱下背景图慢慢交叉淡化，
+     观众看到的是天色真的在变，而不是黑了一觉醒来。 */
+  background:linear-gradient(180deg,rgba(16,22,38,.66),rgba(8,11,18,.8));
+  opacity:0;pointer-events:none;transition:opacity .65s var(--ease);
 }
-/* 昼夜交替：不是一块黑布，而是一轮月亮升起来 / 太阳升起来 */
-.curtain.to-night{background:radial-gradient(circle at 50% 64%,#111c30 0%,#080d16 58%,#04060a 100%)}
-.curtain.to-day{background:radial-gradient(circle at 50% 70%,#43301d 0%,#1b140d 56%,#0a0806 100%)}
+/* 入夜：黄昏的暖橙从地平线退下去，天顶先冷下来 */
+.curtain.to-night{background:linear-gradient(180deg,rgba(24,34,58,.72) 0%,rgba(64,46,28,.5) 55%,rgba(10,14,24,.78) 100%)}
+/* 天亮：天顶的深蓝先松动，地平线先亮起来 */
+.curtain.to-day{background:linear-gradient(180deg,rgba(96,116,176,.55) 0%,rgba(255,218,156,.5) 58%,rgba(252,240,216,.45) 100%)}
 .curtain .curtain-orb{
   position:absolute;left:50%;top:34%;width:78px;height:78px;border-radius:50%;
   transform:translate(-50%,-50%) scale(.62);opacity:0;
@@ -872,7 +884,8 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 .curtain.show{opacity:1;pointer-events:auto}
 .curtain-text{
   font-family:var(--serif);font-size:clamp(19px,2.6vw,28px);font-weight:500;
-  letter-spacing:.52em;text-indent:.52em;color:#b9c5db;
+  letter-spacing:.52em;text-indent:.52em;color:#e8ddc4;
+  text-shadow:0 2px 22px rgba(0,0,0,.65),0 0 8px rgba(0,0,0,.5);
   opacity:0;transform:translateY(8px);transition:.55s var(--ease) .12s;
 }
 .curtain.show .curtain-text{opacity:1;transform:none}
@@ -1554,7 +1567,20 @@ body.home .feed-inner{max-width:740px;margin:0 auto}
 }
 .rt-name{
   font-size:11.5px;color:var(--text-2);letter-spacing:.02em;white-space:nowrap;
-  max-width:74px;overflow:hidden;text-overflow:ellipsis;
+  max-width:96px;overflow:hidden;text-overflow:ellipsis;
+  /* 名字直接压在背景照片上，白天图里有木桌、书架，深浅不一，
+     深色字压到暗处就没了。统一给一个半透明药丸底，
+     夜间深底浅字、白天浅底深字，两张图都压得住。 */
+  display:inline-flex;align-items:center;gap:4px;
+  padding:2px 8px;border-radius:999px;
+  background:rgba(10,14,22,.6);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);
+}
+/* 座位名后面跟一家模型的短标：看得出哪句是 DeepSeek 说的、哪句是混元说的 */
+.rt-model{
+  font-size:8.5px;font-style:normal;letter-spacing:.04em;
+  color:rgba(190,200,220,.85);border-left:1px solid rgba(255,255,255,.14);
+  padding-left:4px;flex-shrink:0;
 }
 /* 身份直接挂在名字下面：小圆点标阵营，颜色标身份，一眼扫完一圈 */
 .rt-role{
@@ -1644,9 +1670,10 @@ body.is-day .rt-table.has-bubble{
 }
 body.is-day .rt-center b{color:#9d742a}
 body.is-day .rt-center span{color:#7a694a}
-body.is-day .rt-seat .rt-name{color:#4a3c22}
+body.is-day .rt-seat .rt-name{color:#3a2f18;background:rgba(255,250,240,.82);border:1px solid rgba(157,116,42,.22)}
+body.is-day .rt-model{color:#8a6410;border-left-color:rgba(138,100,16,.3)}
 body.is-day .rt-seat.speaking .rt-name{color:#8a6410}
-body.is-day .rt-seat.dead .rt-name{color:#9c8f76}
+body.is-day .rt-seat.dead .rt-name{color:#9c8f76;background:rgba(240,234,220,.6)}
 body.is-day .rt-bubble{background:rgba(30,24,15,.95);border-color:rgba(157,116,42,.45)}
 body.is-day .rt-bubble .rb-head{color:#d8b25c;border-bottom-color:rgba(157,116,42,.28)}
 body.is-day .rt-bubble .rb-body{color:#f2e9d8}
@@ -2456,6 +2483,15 @@ function specLabel(spec) {
   const p = PROVIDERS[spec.provider] || PROVIDERS.custom;
   const m = String(spec.model || '').replace(/^ep-/, 'ep…');
   return p.name + ' · ' + (m || '未命名');
+}
+
+/* 小空间用的模型短标：优先厂商短名（DeepSeek/豆包/Kimi/GLM/Qwen/混元），
+   放不下模型全名——圆桌座位下方一行小字，识别"这是谁家的"就够了，
+   悬停有完整 label。真人没有 spec，单独标"真人"。 */
+function modelShort(spec) {
+  if (!spec) return '';
+  const p = PROVIDERS[spec.provider] || PROVIDERS.custom;
+  return p.short || p.name || '';
 }
 
 /* 座位卡上那一行用的短标签：去掉模型名里重复的厂商前缀 */
@@ -4379,7 +4415,7 @@ function paceMs() {
 
 async function beat(ms) {
   const d = FAST ? 0 : (ms == null ? paceMs() : ms);
-  if (d > 0) await sleep(d);
+  if (d > 0) await pSleep(d);
 }
 
 /* 语音开着时，等这句念完再推进到下一位——否则每句刚开口就被下一句掐掉。
@@ -4810,7 +4846,10 @@ function renderTable() {
       ' style="left:' + x.toFixed(2) + '%;top:' + y.toFixed(2) + '%">' +
       '<div class="rt-ava">' + avatarSVG(s.avatar, 54) +
         '<span class="rt-no">' + s.seat + '</span></div>' +
-      '<div class="rt-name">' + esc(s.name) + '</div>' +
+      '<div class="rt-name">' + esc(s.name) +
+        (s.human ? '<i class="rt-model">真人</i>'
+                 : '<i class="rt-model" title="' + esc(specLabel(s.spec)) + '">' + esc(modelShort(s.spec)) + '</i>') +
+      '</div>' +
       roleLine +
     '</div>';
   });
@@ -5208,6 +5247,8 @@ const TYPER = {
     };
     el.textContent = '';
     timer = setInterval(() => {
+      /* 暂停时打字机也停——否则人冻住了字还在飘，看着像没暂停 */
+      if (typeof PAUSED !== 'undefined' && PAUSED) return;
       i++;
       el.textContent = text.slice(0, i);   // 切字符串比逐字 += 少一次排版
       if (i % 3 === 0) scrollFeed(false);
@@ -6012,13 +6053,16 @@ const TTS = (() => {
        "整段耳语只剩最后一句"——所以这一拍必须等。 */
     async waitDone(maxMs) {
       const t0 = Date.now();
-      await sleep(300);
+      await pSleep(300);
       while (busy() && Date.now() - t0 < (maxMs || 14000)) {
         if (typeof FAST !== 'undefined' && FAST) break;
+        if (typeof PAUSED !== 'undefined' && PAUSED) { await sleep(200); continue; }
         await sleep(180);
       }
     },
-    /* 耳语：压低音量、稍快、音调略低，像凑在耳边说话，用在狼人夜聊 */
+    /* 耳语：像凑在耳边说话。原来 volume 压到 0.24——"听不清"被当成了
+       "悄悄话"，观众直接把音量拉满也没用。悄悄话的质感来自语调：
+       稍慢、稍低、平直（少一点播报腔），音量只微降，保证听得清。 */
     whisper(text, name, voice) {
       if (!enabled || ttsMode === 'key') return false;
       if (typeof FAST !== 'undefined' && FAST) return false;
@@ -6028,9 +6072,9 @@ const TTS = (() => {
       const mySeq = ++seq;
       silence();
       const opts = {
-        rate: rate * (v.rate || 1) * 0.94,
-        pitch: (v.pitch != null ? v.pitch : 1) * 0.84,
-        volume: 0.24,
+        rate: rate * (v.rate || 1) * 0.9,
+        pitch: (v.pitch != null ? v.pitch : 1) * 0.88,
+        volume: 0.78,
         voiceName: v.name || '',
         prof: { name: v.kind || '温柔' }
       };
@@ -6112,16 +6156,18 @@ async function curtain(text, holdMs, apply) {
       if (apply) apply();
       await sleep(120);
     } else {
-      // 等幕布基本遮住舞台，再切换场景，避免色调错位
-      await sleep(320);
+      /* 色温薄纱先罩上来（0.65s，半透明）→ 切 is-day，背景图在纱下
+         交叉淡化 3 秒 → 纱退去时天色已经变了。整段 2.5 秒左右，
+         比原来多不到一秒，但换来"看得见天亮/天黑"的过渡。 */
+      await sleep(650);
       if (apply) apply();
-      await sleep(holdMs || 520);
+      await sleep(Math.max(1100, holdMs || 520));
     }
   } finally {
     // 无论 apply 里出了什么事，幕布都必须收掉
     c.classList.remove('show');
   }
-  await sleep(REDUCED ? 60 : 420);
+  await sleep(REDUCED ? 60 : 850);
 }
 
 function clearCurtain() {
@@ -6936,7 +6982,8 @@ async function dayPhase(id) {
      超时就当他没接上话，走规则兜底，对局继续往下走。
      已经发出去的请求不取消（也不该取消，结果可能还会到），只是不再等它。 */
   const seatBudget = Math.max(15, Math.min(60, CFG.timeout / 1000 * 0.6)) * 1000;
-  const withSeatBudget = pr => Promise.race([pr, sleep(seatBudget).then(() => undefined)]);
+  /* 预算计时也要暂停感知：暂停 10 分钟，醒来后不该发现全桌都被"超时"了 */
+  const withSeatBudget = pr => Promise.race([pr, pSleep(seatBudget).then(() => undefined)]);
   for (let i = 0; i < total; i++) {
     await gate(id);
     const p = order[i];
@@ -7658,6 +7705,21 @@ async function gate(id) {
   }
 }
 
+/* 暂停感知的 sleep。原来只有 gate() 认 PAUSED，于是按暂停后：
+   正在飞的请求照跑（这个无法取消，认了），但 beat、预算、TTS 等待
+   也全都照跑——画面还在动、预算还在流逝，观感就是"暂停没反应，
+   跑着跑着就结束了"。改成所有主干等待都走这里：暂停 = 整局冻结，
+   恢复后从断点继续，预算也不白烧。 */
+async function pSleep(ms) {
+  let left = ms;
+  while (left > 0) {
+    if (PAUSED) { await sleep(150); continue; }
+    const step = Math.min(150, left);
+    await sleep(step);
+    left -= step;
+  }
+}
+
 /* ============================================================
    断线续跑
    回合边界往 localStorage 存一份快照。刷新、误关标签、手机切后台被杀，
@@ -7985,6 +8047,8 @@ function openRolesPanel() {
           '<span class="rc-role" style="color:' + meta.color + '">' + meta.name + '</span>' +
           '<span class="rc-name">' + esc(s.name) + '</span>' +
           '<span class="rc-camp">' + (camping[meta.camp] || '') + '</span>' +
+          '<span class="rc-model" title="' + esc(s.spec ? specLabel(s.spec) : '真人') + '">' +
+            esc(s.human ? '真人' : modelShort(s.spec)) + '</span>' +
           '<span class="rc-state">' + (s.alive ? '存活' : (s.outReason || '出局')) + '</span>' +
         '</div>';
       }).join('') +
@@ -8715,7 +8779,7 @@ function togglePause() {
   const b = $('pauseBtn');
   b.textContent = PAUSED ? '继续' : '暂停';
   b.classList.toggle('on', PAUSED);
-  setStatus(PAUSED ? '已暂停' : '继续运行', false);
+  setStatus(PAUSED ? '已暂停 · 画面冻结，点「继续」接着打' : '继续运行', false);
 }
 
 function stopGame() {
