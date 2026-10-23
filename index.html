@@ -1950,6 +1950,8 @@ body.is-day .bet-panel{
         <label class="check"><input type="checkbox" id="godLog" checked> 记录夜间行动明细</label>
         <label class="check"><input type="checkbox" id="showWhisper" checked> 显示玩家的内心独白</label>
         <label class="check"><input type="checkbox" id="suppressThinking" checked> 请求时关闭模型的思考链（推荐）</label>
+        <label class="check"><input type="checkbox" id="focusSpeak"> 焦点发言：人多时每天只让一部分人开口（节奏减半）</label>
+        <label class="check"><input type="checkbox" id="streamSpeech" checked> 流式出字：模型边说边显示，不用等整句返回</label>
         <label class="check"><input type="checkbox" id="ttsEnabled" checked> 语音播报发言</label>
         <div class="row2" style="margin-top:9px">
           <div class="field">
@@ -2302,6 +2304,8 @@ function readCfg() {
     godLog: $('godLog').checked,
     showWhisper: $('showWhisper') ? $('showWhisper').checked : true,
     suppressThinking: $('suppressThinking') ? $('suppressThinking').checked : true,
+    focusSpeak: $('focusSpeak') ? $('focusSpeak').checked : false,
+    stream: $('streamSpeech') ? $('streamSpeech').checked : true,
     autoIdentity: $('autoIdentity') ? $('autoIdentity').checked : true,
     mode: MODE,
     humanSeat: HUMAN,
@@ -2318,7 +2322,8 @@ function saveCfg() {
       temp: c.temp, conc: c.conc, timeout: c.timeout / 1000,
       allowNoKey: c.allowNoKey, speechLen: c.speechLen, paceRaw: c.paceRaw,
       godLog: c.godLog, showWhisper: c.showWhisper, autoIdentity: c.autoIdentity,
-      suppressThinking: c.suppressThinking,
+      suppressThinking: c.suppressThinking, focusSpeak: c.focusSpeak,
+      stream: c.stream,
       mode: c.mode, humanSeat: c.humanSeat, diff: c.diff,
       poolv: POOL_VERSION,
       remember: $('rememberKey').checked,
@@ -2359,6 +2364,8 @@ function loadCfg() {
     if (c.godLog != null) $('godLog').checked = !!c.godLog;
     if (c.showWhisper != null && $('showWhisper')) $('showWhisper').checked = !!c.showWhisper;
     if (c.suppressThinking != null && $('suppressThinking')) $('suppressThinking').checked = !!c.suppressThinking;
+    if (c.focusSpeak != null && $('focusSpeak')) $('focusSpeak').checked = !!c.focusSpeak;
+    if (c.stream != null && $('streamSpeech')) $('streamSpeech').checked = !!c.stream;
     if (c.autoIdentity != null && $('autoIdentity')) $('autoIdentity').checked = !!c.autoIdentity;
     if (c.mode) MODE = c.mode === 'play' ? 'play' : 'watch';
     if (c.humanSeat) HUMAN = Math.max(1, Number(c.humanSeat) || 1);
@@ -2679,6 +2686,88 @@ function noteSpecSwap(from, to) {
   else if (typeof toast === 'function') toast(line);
 }
 
+/* ============================================================
+   流式请求（SSE）
+   token 到达即回调，等待感消失一半。三家走 CF 代理的由 Workers 透传流，
+   直连的走各家原生 SSE。格式差异集中在下面这一个解流函数里。
+   任何异常统一抛 message === 'STREAM_FALLBACK' 的错误，交给调用方降级。
+   ============================================================ */
+const STREAM_FALLBACK = new Error('STREAM_FALLBACK');
+
+async function attemptStream(sp, base, body, onDelta, runId) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CFG.timeout);
+  let res;
+  try {
+    res = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (sp.key || 'ollama'),
+        'Accept': 'text/event-stream'
+      },
+      body: JSON.stringify(Object.assign({}, body, { stream: true })),
+      signal: ctrl.signal
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    throw STREAM_FALLBACK;
+  }
+  clearTimeout(timer);
+  if (!res.ok || !res.body || typeof res.body.getReader !== 'function') throw STREAM_FALLBACK;
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let content = '';
+  let reasoning = '';
+  let finish = '';
+  let reported = 0;   // 已经回调过多少字符，避免每个 chunk 都刷屏
+
+  const push = (force) => {
+    if (runId !== RUN) return;
+    if (!force && content.length - reported < 12) return;
+    reported = content.length;
+    onDelta(content, false, reasoning);
+  };
+
+  try {
+    while (true) {
+      if (runId !== RUN) throw new StopGame();
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      // SSE 以空行分帧；最后一段可能不完整，留给下一轮
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).replace(/\r$/, '');
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        let j;
+        try { j = JSON.parse(payload); } catch (e) { continue; }
+        const ch = j.choices && j.choices[0];
+        if (!ch) continue;
+        const d = ch.delta || {};
+        if (d.reasoning_content) reasoning += d.reasoning_content;
+        else if (d.reasoning) reasoning += d.reasoning;
+        else if (d.thinking) reasoning += d.thinking;
+        if (typeof d.content === 'string') content += d.content;
+        if (ch.finish_reason) finish = ch.finish_reason;
+        push(false);
+      }
+    }
+  } catch (e) {
+    try { reader.cancel(); } catch (e2) {}
+    if (e instanceof StopGame) throw e;
+    throw STREAM_FALLBACK;
+  }
+  push(true);
+  if (!content) throw STREAM_FALLBACK;   // 流里没拿到正文，交给非流式重发
+  return { content, reasoning, finish, usage: null };
+}
+
 /* 任务级温度：机器决策（刀人/投票/验人/毒药/开枪）要的是确定性，
    温度高了会随机乱刀乱投；发言和夜聊要的是活人感，温度低了全部一个腔调。
    没传 temp 就沿用用户在设置里调的那个值。 */
@@ -2689,7 +2778,7 @@ function taskTemp(t) {
   return typeof v === 'number' ? v : null;
 }
 
-async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task }) {
+async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task, onDelta }) {
   const cfg = CFG;
   const origin = spec || null;
 
@@ -2710,7 +2799,10 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task 
   if (!chain.length) throw new Error('模型池为空，先填一个模型名');
 
   /* 在一家模型上把一句请求打完：内部仍有三次尝试，
-     但遇到 4xx 硬错立刻抛出，交给外层换人。 */
+     但遇到 4xx 硬错立刻抛出，交给外层换人。
+     onDelta 存在时走流式：token 到达就回调，等待感直接消失。
+     流式任何一步出问题（这家不认 stream、代理不透传、格式对不上），
+     立刻抛 STREAM_FALLBACK，由外面退回非流式路径重发——绝不半途而废。 */
   const attemptOn = async (sp, base) => {
     const prof = modelProfile(sp);
     const body = {
@@ -2731,6 +2823,32 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task 
         const meta = PROVIDERS[sp.provider] || PROVIDERS.custom;
         if (meta.noThink) meta.noThink(body);
       } catch (e) { console.warn('关思考参数写入失败', e); }
+    }
+    if (typeof onDelta === 'function' && CFG.stream) {
+      try {
+        const r = await attemptStream(sp, base, body, onDelta, runId);
+        let c = stripThinking(r.content);
+        if (c && r.finish === 'length') {
+          const lastStop = c.match(/[\s\S]*[。！？!?…]/);
+          c = (lastStop && lastStop[0].length >= c.length * 0.45)
+            ? lastStop[0] : c.replace(/[，、,；;：:]+\s*$/, '') + '。';
+        }
+        const structured = /^[\s]*[{[]/.test(c) && /"[A-Za-z_]+"\s*:/.test(c);
+        if (c && !structured && looksLikeThinking(c)) {
+          noteModelLeak(sp);
+          c = salvageSpeak(c) || '';
+        }
+        if (!c && r.reasoning) c = rescueFromThinking(r.reasoning);
+        if (c) return c;
+        // 流里只有思考没有正文：退回非流式重发，走那边的重试与兜底
+        throw STREAM_FALLBACK;
+      } catch (e) {
+        if (e instanceof StopGame) throw e;
+        if (e && e.message === 'STREAM_FALLBACK') {
+          onDelta('', true);   // 告诉调用方：流式作废，擦掉已显示的部分
+          body.stream = false;
+        } else throw e;
+      }
     }
     let lastErr = null;
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -4536,7 +4654,7 @@ function openBubble(p, tag) {
         bodyEl.textContent = plain;
         return;
       }
-      typer = TYPER.run(bodyEl, plain, plain.length > 200 ? 18 : 30);
+      typer = TYPER.run(bodyEl, plain, TYPER.speedFor(plain.length));
     },
     close() { closeBubble(); }
   };
@@ -4743,6 +4861,16 @@ function msgError(text) {
 /* 打字机：统一登记，重置对局或切快进时一次性收掉，免得计时器漏在后台 */
 const TYPER = {
   live: new Set(),
+  /* 速度按文本长度自适应。原来固定 18/32 ms 一个字，900 字的发言要 27 秒
+     才打完——打字机本身成了节奏瓶颈，长发言后半段观众在干等。
+     保底约 25 字/秒，越长越快，短句反而慢一点显得有思考。 */
+  speedFor(len) {
+    if (len > 600) return 8;
+    if (len > 300) return 13;
+    if (len > 200) return 18;
+    if (len > 120) return 24;
+    return 30;
+  },
   run(el, text, speed) {
     let i = 0;
     let done = false;
@@ -4796,14 +4924,40 @@ function msgSpeech(p, tag) {
   const whisperEl = node.querySelector('.whisper');
   const bubble = openBubble(p, tag);   // 圆桌上同步冒一个气泡
   let typer = null;
+  let streamed = '';      // 流式已经显示出来的部分
+  let streamBroken = false;
+
+  /* 流式增量。拿到模型吐出来的字符就往屏幕上糊，
+     心声标签出现之前的段落先不显示（那是观众不该看的心里话）。
+     reset 为 true 表示这一遍流式作废，擦掉重来。 */
+  function onStream(text, reset) {
+    if (reset) {
+      streamBroken = true;
+      streamed = '';
+      bodyEl.textContent = '';
+      return;
+    }
+    if (streamBroken) return;
+    streamed = text;
+    const m = text.match(/【\s*发\s*言\s*】\s*[:：]?\s*([\s\S]*)$/);
+    if (m) {
+      bodyEl.textContent = m[1];
+      bubble.set(m[1]);
+      if (!node.scrollIntoView) return;
+      scrollFeed(false);
+    }
+  }
 
   return {
+    onStream,
     set(text, whisper) {
       node.classList.remove('speaking');
       const plain = String(text == null ? '' : text);
 
       // 同一条消息可能被改写（重试、改口），先收掉上一轮的计时器
       if (typer) { typer.finish(); typer = null; }
+      // 流式已经显示过的内容就直接用，别让观众再看一遍打字机
+      const alreadyStreamed = streamed && !streamBroken;
 
       if (whisper && CFG.showWhisper && !secretsHidden()) {
         whisperEl.textContent = whisper;
@@ -4817,13 +4971,20 @@ function msgSpeech(p, tag) {
 
       bubble.set(plain);   // 圆桌气泡跟记录同步
 
+      // 流式已经一路显示到这儿了，就不再补打字机
+      if (alreadyStreamed) {
+        bodyEl.textContent = plain;
+        scrollFeed(true);
+        return;
+      }
+
       // 快进、减少动效、文本太短，都不必逐字打
       if (FAST || REDUCED || plain.length < 20) {
         bodyEl.textContent = plain;
         scrollFeed(true);
         return;
       }
-      typer = TYPER.run(bodyEl, plain, plain.length > 200 ? 18 : 32);
+      typer = TYPER.run(bodyEl, plain, TYPER.speedFor(plain.length));
     }
   };
 }
@@ -5953,6 +6114,34 @@ async function nightPhase(id) {
   } else {
     nightStatus('狼人在确认今晚的目标', true);
     const lines = [];
+    /* 并行生成、串行演出。原来是串行的：每只狼要等上一只的 TTS 念完
+       才发请求，三只狼白等两轮网络 + 两轮耳语。现在所有 AI 狼的话
+       同时生成，再按座位顺序一条条演——偷偷商量的感觉不变，等待没了。 */
+    const aiWolves = wolvesAlive.filter(w => !isMe(w));
+    const generated = await pool(aiWolves, CFG.conc, async w => {
+      await gate(id);
+      const mates = wolvesAlive.filter(x => x.seat !== w.seat)
+        .map(x => x.seat + ' 号 ' + x.name).join('、');
+      /* 第一夜还没有任何发言，必须说清楚，否则模型会编「刚才谁说得多」
+         这类不存在的信息去支撑刀口 */
+      const ans = await callLLM({
+        system: sysPrompt(w, { task: 'chat' }),
+        user: '【狼人夜聊】\n现在是第 ' + S.round + ' 夜。' +
+              (S.round === 1
+                ? '还没有人发过言，你手上没有任何发言信息。不要编造别人说过什么，只能说直觉、座位位置，或者「先刀中间位置」这种朴素理由。'
+                : publicState()) +
+              '\n你的狼队友：' + mates +
+              '\n可刀的对象：' + candText +
+              '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
+        runId: id,
+        maxTokens: 220,
+        spec: w.spec,
+        temp: taskTemp('chat')
+      });
+      return { seat: w.seat, ans };
+    });
+    const genBySeat = new Map(generated.map(g => [g.seat, g]));
+
     for (const w of wolvesAlive) {
       await gate(id);
       S.speaking = w.seat; renderSeats();
@@ -5965,22 +6154,8 @@ async function nightPhase(id) {
         });
         if (!ans) ans = '（没吭声）';
       } else {
-        ans = await callLLM({
-          system: sysPrompt(w, { task: 'chat' }),
-          /* 第一夜还没有任何发言，必须说清楚，否则模型会编「刚才谁说得多」
-             这类不存在的信息去支撑刀口 */
-          user: '【狼人夜聊】\n现在是第 ' + S.round + ' 夜。' +
-                (S.round === 1
-                  ? '还没有人发过言，你手上没有任何发言信息。不要编造别人说过什么，只能说直觉、座位位置，或者「先刀中间位置」这种朴素理由。'
-                  : publicState()) +
-                '\n你的狼队友：' + mates +
-                '\n可刀的对象：' + candText +
-                '\n\n说一句话，讲清你想刀谁和理由。不超过 40 字。',
-          runId: id,
-          maxTokens: 220,
-          spec: w.spec,
-          temp: taskTemp('chat')
-        });
+        const got = genBySeat.get(w.seat);
+        ans = got ? got.ans : '（没吭声）';
       }
       lines.push(w.name + '（' + w.seat + ' 号）：' + ans);
       godMsg('夜聊 · ' + w.name + '：' + ans, '🐺');
@@ -6027,12 +6202,12 @@ async function nightPhase(id) {
        狼票分散是狼 AI 输掉白天最常见的原因：三只狼各投一个，好人反而聚起来了。
        定完刀顺手让它们选一个白天要压票的目标，写进 S.wolfPlan，投票时注入。 */
     S.wolfPlan = null;
-    const aiWolves = wolvesAlive.filter(w => !isMe(w));
-    if (aiWolves.length && S.round >= 2) {
+    const planWolves = wolvesAlive.filter(w => !isMe(w));
+    if (planWolves.length && S.round >= 2) {
       const planCands = goodsAlive.filter(s => s.alive);
       if (planCands.length >= 2) {
         const planSeats = planCands.map(s => s.seat);
-        const planVotes = await pool(aiWolves, CFG.conc, async w =>
+        const planVotes = await pool(planWolves, CFG.conc, async w =>
           (await chooseSeat(w, id,
             '【狼队白天归票】\n现在是第 ' + S.round + ' 夜，今晚的刀口已经定了。\n' +
             publicState() +
@@ -6367,6 +6542,22 @@ async function dayPhase(id) {
   const order = speechOrder();
   const total = order.length;
   let exploded = false;   // 狼人自爆会直接跳过投票入夜
+  let prefetched = null;  // 预取的下一位发言：{ i, take() }
+  /* 兜底请求：预取失败或被跳过时，按同样的 prompt 重新问一次 */
+  const askSpeechFor = (q, idx, tot) => callLLM({
+    system: sysPrompt(q, { task: 'speak' }),
+    user: speechPrompt(q, idx, tot).join('\n\n'),
+    runId: id,
+    maxTokens: CFG.speechLen === 'long' ? 1600 : CFG.speechLen === 'short' ? 700 : 1100,
+    spec: q.spec,
+    task: 'speak'
+  });
+  /* 每座发言的预算。一个座位卡住，全桌都陪着等——原来最坏情况是
+     3 家 × 3 次重试 × 90 秒超时，一个人能拖走整局。这里封顶，
+     超时就当他没接上话，走规则兜底，对局继续往下走。
+     已经发出去的请求不取消（也不该取消，结果可能还会到），只是不再等它。 */
+  const seatBudget = Math.max(15, Math.min(60, CFG.timeout / 1000 * 0.6)) * 1000;
+  const withSeatBudget = pr => Promise.race([pr, sleep(seatBudget).then(() => undefined)]);
   for (let i = 0; i < total; i++) {
     await gate(id);
     const p = order[i];
@@ -6379,41 +6570,7 @@ async function dayPhase(id) {
     const card = msgSpeech(p);
     let wantExplode = false;
 
-    const parts = ['现在是第 ' + S.round + ' 天白天，轮到你发言。', publicState()];
-    const priv = privateInfo(p);
-    if (priv) parts.push('【只有你知道】\n' + priv);
-    if (p.seat === S.killSeat && S.news.length) {
-      parts.push('【提示】你昨晚是狼人袭击的目标。');
-    }
-    parts.push('【你之前的发言与投票】\n' + memText(p));
-    /* 第一顺位发言天然没有信息可接，只给反向禁令（不许说「我先听一轮」）
-        它会不知所措。补一条正向策略：允许基于什么下判断。 */
-    if (i === 0) {
-      parts.push('【首轮策略】你是今天第一个开口的人，没有任何人的话可以参考。' +
-        '允许基于座位位置、发言顺序、面相和直觉下判断，' +
-        '但必须给出一个具体的最怀疑对象和一条站得住的依据，不许说"我先听听看"。');
-    }
-    /* 预言家是好人把票合到一起的唯一抓手，不给提示的话它经常一整局都不吭声 */
-    if (p.role === 'SEER' && S.round >= 2) {
-      parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
-        '把第几夜验了谁、什么结果报出来——好人只有靠这个才能把票合到一起。跳不跳、什么时候跳，你自己判断。');
-      /* 有人跟你抢这张牌的时候，上面那句「你自己判断」会害死真预 */
-      const counter = seerCounterHint(p);
-      if (counter.length) parts.push(counter.join('\n'));
-    }
-    /* 狼队战术：悍跳与被查杀后的自爆 */
-    if (isWolfRole(p.role) && S.round >= 2) {
-      parts.push('【狼队战术】有人跳预言家报查验时：跳的人若是你队友，帮他抬票；' +
-        '若是好人，可以悍跳反咬——编一套自己的查验记录，别和公开事实矛盾。');
-      if (wasCheckedPublicly(p.seat)) {
-        parts.push('【自爆】你已经被人公开点名查杀了，今天很可能被投出去。' +
-          '这种情况可以只输出【自爆】两个字翻牌，直接进入天黑，打断他们的讨论；也可以照常发言，你自己权衡。');
-      }
-    }
-    parts.push('输出两段，严格按格式，不要多写：');
-    parts.push('【心声】一句不超过 18 字的真实想法');
-    parts.push('【发言】你这一轮的正式发言，结合公开信息给出判断和最怀疑的人');
-    parts.push('直接输出这两段，不要写思考过程，不要提"作为XX身份"。');
+    const parts = speechPrompt(p, i, total);
 
     try {
       let parts2;
@@ -6430,22 +6587,31 @@ async function dayPhase(id) {
           runId: id,
           maxTokens: CFG.speechLen === 'long' ? 1600 : CFG.speechLen === 'short' ? 700 : 1100,
           spec: p.spec,
-          task: 'speak'
+          task: 'speak',
+          /* 流式出字。只有第一次请求挂回调——重试和补句都是短请求，
+             不值得让观众看半句话被改写。 */
+          onDelta: extra ? undefined : card.onStream
         });
-        let sp = splitSpeak(await askSpeech());
+        let raw = await withSeatBudget(
+          prefetched && prefetched.i === i ? prefetched.take(card) : askSpeech());
+        if (raw === undefined) {
+          godMsg(p.name + ' 这一轮想得太久，不等了', '⚠️');
+          raw = '';
+        }
+        let sp = splitSpeak(raw);
         /* 狼人白天把底牌说漏嘴了：这一遍作废，加重语气重说一次 */
         if (isWolfRole(p.role) && SELF_REVEAL.test(sp.body)) {
           godMsg(p.name + ' 这句漏了底，已要求重说', '⚠️');
-          sp = splitSpeak(await askSpeech(
+          sp = splitSpeak(await withSeatBudget(askSpeech(
             '\n\n【再强调一遍】你上一遍把自己的身份说出来了，这一遍作废。你是狼人，必须假装好人重说：' +
-            '不许出现"我是狼""我的队友""我们狼队"这类话，也不许点出队友的座位号。'));
+            '不许出现"我是狼""我的队友""我们狼队"这类话，也不许点出队友的座位号。')));
         }
         /* 切不出正文（心里话和发言糊在一起 / 整段在复述提示词）：重说一次 */
         if (!sp.body) {
           godMsg(p.name + ' 这轮没拆出正文，已要求重说', '⚠️');
-          sp = splitSpeak(await askSpeech(
+          sp = splitSpeak(await withSeatBudget(askSpeech(
             '\n\n【重来】你上一遍把心里话和公开发言混在一起了。严格按格式重说：' +
-            '先【心声】一句话，再【发言】一段话，发言里不许出现"心声"两个字。'));
+            '先【心声】一句话，再【发言】一段话，发言里不许出现"心声"两个字。')));
         }
         /* 还是空的：模型这一轮彻底不配合。用规则造一句——按他的脾气和当前票型
            给个态度，总比「张了张嘴没说出话」好看，观众也不会以为游戏卡了。 */
@@ -6541,6 +6707,35 @@ async function dayPhase(id) {
     S.speaking = null; renderSeats();
     scrollFeed(true);
     if (wantExplode) { await beat(700); break; }
+    /* 预取下一位。这一位的发言已经入 log、已经开播，趁打字机和 TTS
+       在跑，把下一位的请求发出去——网络等待藏在演出后面，观感仍是顺序的。
+       预取也挂流式回调：token 先落进缓冲，轮到这位时一次性刷到卡片上，
+       于是 card.set 会发现"已经流式显示过"，不再补一遍打字机。
+       真人不能预取（要等他输入）；上一轮没消费掉的预取直接丢掉。 */
+    prefetched = null;
+    const nxt = order[i + 1];
+    if (nxt && !isMe(nxt) && !wantExplode) {
+      const nparts = speechPrompt(nxt, i + 1, total);
+      let buf = '';
+      const feed = (text, reset) => { if (reset) buf = ''; else buf = text; };
+      const p2 = callLLM({
+        system: sysPrompt(nxt, { task: 'speak' }),
+        user: nparts.join('\n\n'),
+        runId: id,
+        maxTokens: CFG.speechLen === 'long' ? 1600 : CFG.speechLen === 'short' ? 700 : 1100,
+        spec: nxt.spec,
+        task: 'speak',
+        onDelta: feed
+      }).then(v => v, e => { if (e instanceof StopGame) throw e; return null; });
+      prefetched = {
+        i: i + 1,
+        take: async (card2) => {
+          const v = await p2;
+          if (card2 && card2.onStream && buf) card2.onStream(buf, false);
+          return v || (await askSpeechFor(nxt, i + 1, total));
+        }
+      };
+    }
     await speakGap();
   }
   setProgress(0.84);
@@ -6754,8 +6949,62 @@ function seerCounterHint(p) {
   ];
 }
 
-function speechOrder() {  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
+/* 白天发言的 user prompt。抽出来是为了能预取下一位——
+   上一位话音刚落就可以把下一位的请求发出去，网络等待藏在演出后面。 */
+function speechPrompt(p, i, total) {
+  const parts = ['现在是第 ' + S.round + ' 天白天，轮到你发言。', publicState()];
+  const priv = privateInfo(p);
+  if (priv) parts.push('【只有你知道】\n' + priv);
+  if (p.seat === S.killSeat && S.news.length) {
+    parts.push('【提示】你昨晚是狼人袭击的目标。');
+  }
+  parts.push('【你之前的发言与投票】\n' + memText(p));
+  /* 第一顺位发言天然没有信息可接，只给反向禁令（不许说「我先听一轮」）
+     它会不知所措。补一条正向策略：允许基于什么下判断。 */
+  if (i === 0) {
+    parts.push('【首轮策略】你是今天第一个开口的人，没有任何人的话可以参考。' +
+      '允许基于座位位置、发言顺序、面相和直觉下判断，' +
+      '但必须给出一个具体的最怀疑对象和一条站得住的依据，不许说"我先听听看"。');
+  }
+  /* 预言家是好人把票合到一起的唯一抓手，不给提示的话它经常一整局都不吭声 */
+  if (p.role === 'SEER' && S.round >= 2) {
+    parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
+      '把第几夜验了谁、什么结果报出来——好人只有靠这个才能把票合到一起。跳不跳、什么时候跳，你自己判断。');
+    /* 有人跟你抢这张牌的时候，上面那句「你自己判断」会害死真预 */
+    const counter = seerCounterHint(p);
+    if (counter.length) parts.push(counter.join('\n'));
+  }
+  /* 狼队战术：悍跳与被查杀后的自爆 */
+  if (isWolfRole(p.role) && S.round >= 2) {
+    parts.push('【狼队战术】有人跳预言家报查验时：跳的人若是你队友，帮他抬票；' +
+      '若是好人，可以悍跳反咬——编一套自己的查验记录，别和公开事实矛盾。');
+    if (wasCheckedPublicly(p.seat)) {
+      parts.push('【自爆】你已经被人公开点名查杀了，今天很可能被投出去。' +
+        '这种情况可以只输出【自爆】两个字翻牌，直接进入天黑，打断他们的讨论；也可以照常发言，你自己权衡。');
+    }
+  }
+  parts.push('输出两段，严格按格式，不要多写：');
+  parts.push('【心声】一句不超过 18 字的真实想法');
+  parts.push('【发言】你这一轮的正式发言，结合公开信息给出判断和最怀疑的人');
+  parts.push('直接输出这两段，不要写思考过程，不要提"作为XX身份"。');
+  return parts;
+}
+
+/* 焦点发言模式：9 人以上每天只让一部分人发言。
+   真人局本来就这么打——人人发言一轮十几分钟，一半是废话。
+   按座位轮转保证公平：今天 1/4/7/10 说，明天 2/5/8/11，谁都有机会。
+   轮空的人直接进投票，但投票 prompt 里会被告知「你这轮没发言」，
+   免得他们按"我刚才说过话"的幻觉来投。 */
+function speechOrder() {
+  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
   if (!alive.length) return [];
+  if (CFG.focusSpeak && alive.length > 6) {
+    const keep = Math.max(4, Math.round(alive.length * 0.45));
+    // 按轮次轮转起始偏移，保证每个人隔几轮都能说上话
+    const offset = ((S.round - 1) * keep) % alive.length;
+    const rotated = alive.slice(offset).concat(alive.slice(0, offset));
+    return rotated.slice(0, keep);
+  }
   let start = 0;
   if (S.lastDeathSeat != null) {
     start = alive.findIndex(s => s.seat > S.lastDeathSeat);
@@ -8185,7 +8434,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'f' || e.key === 'F') toggleFast();
 });
 
-['temp','conc','timeout','speechLen','pace','godLog','allowNoKey','rememberKey','showWhisper','autoIdentity','suppressThinking']
+['temp','conc','timeout','speechLen','pace','godLog','allowNoKey','rememberKey','showWhisper','autoIdentity','suppressThinking','focusSpeak','streamSpeech']
   .forEach(id => {
     const el = $(id);
     if (!el) return;
