@@ -1367,6 +1367,16 @@ body.player-view .whisper{display:none!important}
   /* 结局背景要盖满整个舞台，包括记录栏那一块 */
   body.end-wolf .stage-bg,
   body.end-good .stage-bg{left:0}
+  /* 终局：圆桌和气泡退场，把画面整个让给胜利背景和结算横幅。
+     原来结算时圆桌还压在右边、身份徽章还亮着，和居中的胜负横幅挤在一起，
+     一张胜利图被切成两半，主次全乱。 */
+  body.end-wolf .round-table,
+  body.end-good .round-table{
+    opacity:0;transform:scale(.96);pointer-events:none;
+    transition:opacity .7s var(--ease),transform .7s var(--ease);
+  }
+  body.end-wolf .rt-bubble,
+  body.end-good .rt-bubble{opacity:0}
   /* 首页：回到一整块画面，标题居中 */
   body.home .stage-bg{left:0}
   body.home .feed::before{display:none}
@@ -1407,7 +1417,7 @@ body.home .feed-inner{max-width:740px;margin:0 auto}
     radial-gradient(58% 54% at 50% 44%,rgba(20,27,36,.5),rgba(10,15,21,.28) 66%,rgba(9,13,19,0) 80%);
   border:1px solid rgba(217,169,75,.32);
   box-shadow:inset 0 0 0 6px rgba(217,169,75,.035),inset 0 0 90px rgba(0,0,0,.5),0 0 60px rgba(217,169,75,.06);
-  transition:background .3s;
+  transition:background .3s,transform .45s var(--ease);
 }
 .rt-table.has-bubble{background:
   radial-gradient(62% 58% at 50% 44%,rgba(10,14,20,.78),rgba(8,11,17,.5) 68%,rgba(9,13,19,.1) 82%)}
@@ -1592,9 +1602,32 @@ body.is-day .bet-panel{
 }
 /* 净桌时把记录栏也收走，圆桌占满整个舞台 */
 @media (min-width:1181px){
+  /* 注意这里是两列不是三列。1181px 以上 .panel.left 是 display:none，
+     可见的 grid item 只有 stage 和右栏。原来写成 0px minmax(0,1fr) 0px，
+     左栏虽然隐藏但仍算一个 item，stage 被挤到第一列（0px 宽）——
+     整个舞台塌成 0，屏幕上就只剩右栏那块透明区域，看起来就是全黑。 */
+  body.hud-hide .app{grid-template-columns:minmax(0,1fr) 0px}
   body.hud-hide .feed{display:none}
   body.hud-hide .round-table{left:0}
   body.hud-hide .stage-bg{left:0}
+}
+/* 净桌是一瞬间的事，原来没有任何反馈，用户点一下中间就像"黑屏了"。
+   这里补三样：一句会自己淡掉的小提示、圆桌稍微放大居中、
+   以及把压场遮罩调淡——面板都收了，再压一层暗的就只剩黑了。 */
+.rt-hide-hint{
+  position:absolute;left:50%;top:18px;transform:translateX(-50%);
+  z-index:8;padding:6px 15px;border-radius:999px;
+  background:rgba(10,13,20,.82);border:1px solid rgba(217,169,75,.3);
+  color:var(--gold);font-size:11.5px;letter-spacing:.1em;
+  opacity:0;pointer-events:none;transition:opacity .4s var(--ease);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+.rt-hide-hint.show{opacity:1}
+@media (min-width:1181px){
+  body.hud-hide .round-table .rt-table{transform:scale(1.06)}
+  body.hud-hide .stage-bg .shade{opacity:.72}
+  body.hud-hide.end-wolf .stage-bg .shade,
+  body.hud-hide.end-good .stage-bg .shade{opacity:.35}
 }
 
 /* ══════════ 响应式 ══════════ */
@@ -1903,7 +1936,8 @@ body.is-day .bet-panel{
               <option value="auto">自动</option>
               <option value="0">极快</option>
               <option value="300">快</option>
-              <option value="430" selected>较快</option>
+              <option value="430">较快</option>
+              <option value="620" selected>舒缓</option>
               <option value="900">慢</option>
             </select>
           </div>
@@ -2318,7 +2352,7 @@ function saveCfg() {
   try {
     const c = readCfg();
     localStorage.setItem('ww.cfg', JSON.stringify({
-      v: 2,
+      v: 3,
       temp: c.temp, conc: c.conc, timeout: c.timeout / 1000,
       allowNoKey: c.allowNoKey, speechLen: c.speechLen, paceRaw: c.paceRaw,
       godLog: c.godLog, showWhisper: c.showWhisper, autoIdentity: c.autoIdentity,
@@ -2352,13 +2386,20 @@ function loadCfg() {
     $('allowNoKey').checked = !!c.allowNoKey;
     if (c.speechLen) $('speechLen').value = c.speechLen;
     if (c.paceRaw) $('pace').value = c.paceRaw;
-    // 默认值升级（v2：温度 0.6、并发 6、节奏「较快」）。旧存档里那几个数是旧默认，
-    // 一次性覆盖成新默认，之后用户自己改的值照常保留。
+    // 默认值升级。旧存档里那几个数是旧默认，一次性覆盖成新默认，
+    // 之后用户自己改的值照常保留。
+    // v2（温度 0.6、并发 6、节奏 430）；v3 节奏放到 620、语速放到 1.0，
+    // 因为"较快"配快语速整体太赶，观众跟不上 AI 在互相咬什么。
     if ((c.v || 1) < 2) {
       $('temp').value = '0.6';
       $('conc').value = '6';
       $('pace').value = '430';
       c.v = 2;
+      setTimeout(saveCfg, 0);
+    }
+    if ((c.v || 1) < 3) {
+      $('pace').value = '620';
+      c.v = 3;
       setTimeout(saveCfg, 0);
     }
     if (c.godLog != null) $('godLog').checked = !!c.godLog;
@@ -2408,12 +2449,19 @@ function loadCfg() {
       BGM.setEnabled(true);
       saveCfg();
     }
-    if (c.ttsRate && c.bgm != null) {   // 老存档没有 bgm 字段，那时的 1.0 是旧默认，别盖掉新语速
+    if (c.ttsRate && c.bgm != null && c.v >= 3) {   // v3 起才认存档里的语速
       TTS.setRate(c.ttsRate);
       const sel = $('ttsRate');
       if (sel) sel.value = c.ttsRate;
       const sm = $('smRate');
       if (sm) sm.value = c.ttsRate;
+    } else if ((c.v || 1) < 3) {
+      // 旧存档的 1.3 是"偏快"旧默认，统一换成本次的 1.0
+      TTS.setRate(1);
+      const sel = $('ttsRate');
+      if (sel) sel.value = '1';
+      const sm = $('smRate');
+      if (sm) sm.value = '1';
     }
     if (c.ttsScope) {
       TTS.setScope(c.ttsScope);
@@ -5349,7 +5397,8 @@ const TTS = (() => {
   let enabled = true;       // 语音播报默认开，老用户存过关就保持关
   let narrOn = true;        // 旁白单独开关，默认开
   let ttsMode = 'full';     // 朗读范围：full 全文 / brief 只念开头 / key 只念旁白
-  let rate = 1.3;           // 默认语速偏快一点，原生合成的 1.0 听起来太端着
+  let rate = 1.0;           // 默认语速。1.3 是"偏快"，配快节奏对局像在赶命；
+                            // 观众要听懂 AI 在互相咬什么，1.0 更合适，想快可在声音菜单调
   let pitch = 1;
   let scope = 'speech';
   let utter = null;         // 当前原生播报
@@ -5358,6 +5407,7 @@ const TTS = (() => {
   let seq = 0;              // 播报序号，过期的回调一律丢掉
   let nativeFails = 0;      // 原生连续失败次数
   let nativeOff = false;    // 判死之后本局不再试原生
+  let lastCancelAt = 0;     // 最近一次主动停止的时刻
   let voicesHooked = false;
   let voiceCache = null;
 
@@ -5435,15 +5485,23 @@ const TTS = (() => {
     return at >= max * 0.6 ? head.slice(0, at + 1) : head;
   }
 
+  /* 主动停止。注意 Edge/Chrome 的 cancel() 有一个老毛病：cancel 之后
+     speechSynthesis 会卡在 paused/pending 状态，后面所有 speak() 都被静默吞掉，
+     表现为"点了快进再恢复就没有声音了"。这里 cancel 之后补一次 resume()
+     把队列唤醒，并且不算一次"原生失败"——是用户主动停的，不是它坏了。 */
   function silence() {
     clearTimeout(watchdog);
     watchdog = 0;
-    if (window.speechSynthesis) { try { window.speechSynthesis.cancel(); } catch (e) { /* 忽略 */ } }
+    lastCancelAt = Date.now();
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) { /* 忽略 */ }
+      try { window.speechSynthesis.resume(); } catch (e) { /* 忽略 */ }
+    }
     if (audio) { try { audio.pause(); } catch (e) { /* 忽略 */ } audio = null; }
     utter = null;
   }
 
-  function stopAll() { seq++; silence(); }
+  function stopAll() { seq++; nativeFails = 0; silence(); }
 
   function busy() {
     if (audio && !audio.paused) return true;
@@ -5454,6 +5512,11 @@ const TTS = (() => {
   }
 
   /* 在线语音：走 Pages 代理绕开跨域 */
+  /* 在线语音兜底。走 /api/proxy 转百度公开 TTS。
+     失败时不能就这么静默——原来只 console.warn，用户侧表现为
+     "突然没有声音了"且无从判断。这里失败一次就提示一次，
+     并且把 nativeOff 解开：在线都死了，原生好歹再试一次。 */
+  let onlineWarned = false;
   function talkOnline(text, o, mySeq) {
     if (mySeq != null && mySeq !== seq) return false;
     if (!canOnline()) return false;
@@ -5464,9 +5527,20 @@ const TTS = (() => {
       '&spd=' + Math.min(15, Math.max(1, spd)) + '&source=web';
     const a = new Audio('/api/proxy?target=' + encodeURIComponent(target));
     a.volume = 1;
+    let started = false;
     const drop = () => { if (audio === a) audio = null; };
     a.onended = drop;
-    a.onerror = () => { drop(); console.warn('在线语音播放失败'); };
+    a.onplaying = () => { started = true; onlineWarned = false; };
+    a.onerror = () => {
+      drop();
+      console.warn('在线语音播放失败');
+      // 在线这条路断了：把原生放出来再试，别让整局静默
+      if (nativeOff) { nativeOff = false; nativeFails = 0; }
+      if (!started && !onlineWarned) {
+        onlineWarned = true;
+        if (typeof toast === 'function') toast('在线语音没接上，已切回本机音色；还是没声就在声音菜单里重开一次');
+      }
+    };
     audio = a;
     a.play().catch(drop);
     return true;
@@ -5486,7 +5560,9 @@ const TTS = (() => {
       watchdog = 0;
       if (mySeq !== seq) return;
       nativeFails++;
-      if (nativeFails >= 2) nativeOff = true;   // 两次都不出声，这局别浪费时间了
+      // 三次都不出声才判死。原来两次太激进：Edge 首次加载神经网络音色时
+      // 启动就要一两秒，连续两句都会被误判，之后整局静默。
+      if (nativeFails >= 3) nativeOff = true;
       talkOnline(text, o, mySeq);
     };
 
@@ -5514,21 +5590,29 @@ const TTS = (() => {
         };
         utter.onerror = toOnline;
         synth.speak(utter);
-        // 有些环境 speak() 静默失败（无中文音色、无声设备），真在播的话 onstart 早就来了，
-        // 所以只要 900ms 内没等到 onstart 就判失效，别管 synth 自己报的 speaking 状态
+        /* 有些环境 speak() 静默失败（无中文音色、无声设备），真在播的话 onstart 早就来了，
+           所以只要 900ms 内没等到 onstart 就判失效，别管 synth 自己报的 speaking 状态。
+           但刚 cancel() 过的话引擎要重新热起来，这个窗口放到 2.5 秒，
+           否则"快进→恢复"后第一句必然被误判成失效。 */
+        const justCancelled = Date.now() - lastCancelAt < 1500;
+        const wait = justCancelled ? 2500 : NATIVE_WAIT;
         watchdog = setTimeout(() => {
           if (!settled) toOnline();
-        }, NATIVE_WAIT);
+        }, wait);
       } catch (e) {
         toOnline();
       }
     };
 
-    // cancel() 之后同步调 speak() 会被 Chrome 直接吞掉，统一隔一拍再念
+    // cancel() 之后同步调 speak() 会被 Chrome 直接吞掉，统一隔一拍再念。
+    // 但本来就没在播的时候不必等——夜聊并行生成后演出循环很快，
+    // 白等这 60ms 会让下一句的 cancel() 追上来把这一句干掉。
     if (synth.speaking || synth.pending) {
       try { synth.cancel(); } catch (e) { /* 忽略 */ }
+      setTimeout(start, 60);
+    } else {
+      start();
     }
-    setTimeout(start, 60);
     return true;
   }
 
@@ -5648,9 +5732,14 @@ const TTS = (() => {
     get supported() { return canNative() || canOnline(); },
     get speaking() { return busy(); },
     speak, stop, skip, test,
-    /* 等当前这条播完再走，防止下一句发言一开口就把上一句掐死 */
+    /* 等当前这条播完再走，防止下一句发言一开口就把上一句掐死。
+       注意开头那 300ms：utterance 是异步启动的，立刻查 busy() 会漏判
+       （utter 还没建起来），于是上一句还没开口就被下一句的 cancel() 干掉。
+       夜聊改成并行生成之后演出循环跑得飞快，这个窗口被放大到
+       "整段耳语只剩最后一句"——所以这一拍必须等。 */
     async waitDone(maxMs) {
       const t0 = Date.now();
+      await sleep(300);
       while (busy() && Date.now() - t0 < (maxMs || 14000)) {
         if (typeof FAST !== 'undefined' && FAST) break;
         await sleep(180);
@@ -5731,6 +5820,11 @@ const TTS = (() => {
    ============================================================ */
 const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/* 昼夜幕布。两个坑都踩过：
+   ① apply() 抛异常时 c.classList.remove('show') 不会执行，幕布永久挂在屏幕上
+      ——整局黑屏，只能等下一次昼夜切换才恢复。所以必须 try/finally。
+   ② text 不匹配任何关键词时两个类都不加，用的是 .curtain 默认的深蓝黑底，
+      和夜/昼两张图都不挨着，视觉上就是"背景乱跳"。所以兜底给 to-night。 */
 async function curtain(text, holdMs, apply) {
   const c = $('curtain');
   if (!c) { if (apply) apply(); return; }
@@ -5738,21 +5832,23 @@ async function curtain(text, holdMs, apply) {
   // 按提示词判断这是「入夜」还是「天亮」，幕布下面升起月亮或太阳
   c.classList.remove('to-night', 'to-day');
   if (/天亮|白天|清晨|日出/.test(text)) c.classList.add('to-day');
-  else if (/天黑|夜晚|入夜|闭眼|深夜/.test(text)) c.classList.add('to-night');
+  else c.classList.add('to-night');   // 兜底：认不出一律按入夜，别用默认深蓝黑
   c.classList.add('show');
-  if (REDUCED) {
-    if (apply) apply();
-    await sleep(120);
+  try {
+    if (REDUCED) {
+      if (apply) apply();
+      await sleep(120);
+    } else {
+      // 等幕布基本遮住舞台，再切换场景，避免色调错位
+      await sleep(320);
+      if (apply) apply();
+      await sleep(holdMs || 520);
+    }
+  } finally {
+    // 无论 apply 里出了什么事，幕布都必须收掉
     c.classList.remove('show');
-    await sleep(60);
-    return;
   }
-  // 等幕布基本遮住舞台，再切换场景，避免色调错位
-  await sleep(320);
-  if (apply) apply();
-  await sleep(holdMs || 520);
-  c.classList.remove('show');
-  await sleep(420);
+  await sleep(REDUCED ? 60 : 420);
 }
 
 function clearCurtain() {
@@ -5889,6 +5985,7 @@ function showHero() {
     '</div>' +
     '<div class="hero-arrow">先把密钥填进「配置」，点开始，剩下的交给它们 <span>→</span></div>';
   // 桌面端首页要占整个舞台，不能挤在 264px 的记录栏里
+  const st = $('stage');
   if (st) st.appendChild(wrap); else feedEl().appendChild(wrap);
 }
 
@@ -7487,6 +7584,10 @@ async function runRoundLoop(id) {
 async function startGame() {
   CFG = readCfg();
   hideResumeBar();
+  /* 上一局的终局状态必须在这里清干净：胜利背景（body.end-wolf/end-good）、
+     结算浮层 #endBanner、is-over、圆桌、记录栏。原来漏了这一步，
+     "再来一局"之后胜利背景图和战报横幅一直挂在第二局上面。 */
+  resetUI();
   clearSnap();   // 开新局，旧存档作废
   if (typeof TTS !== 'undefined') TTS.probeEdge();   // 后台探一次，不阻塞开局
   const n = Number($('boardSel').value) || 9;
@@ -8372,6 +8473,21 @@ $('testAllBtn').addEventListener('click', testAll);
 $('fastBtn').addEventListener('click', toggleFast);
 
 /* 净桌模式：收起两侧面板，只看牌桌；点牌桌背景也能收，按钮恢复 */
+let hudHintTimer = 0;
+function flashHudHint() {
+  let el = document.getElementById('hudHint');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'hudHint';
+    el.className = 'rt-hide-hint';
+    el.textContent = '净桌模式 · 点右上角「展开」恢复';
+    const st = $('stage');
+    if (st) st.appendChild(el);
+  }
+  el.classList.add('show');
+  clearTimeout(hudHintTimer);
+  hudHintTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
 function setHud(hide) {
   document.body.classList.toggle('hud-hide', hide);
   const b = $('hudBtn');
@@ -8379,6 +8495,10 @@ function setHud(hide) {
   b.textContent = hide ? '展开' : '净桌';
   b.classList.toggle('on', hide);
   b.title = hide ? '把座位和配置面板放回来' : '收起两侧面板，只看牌桌（点牌桌背景也能收）';
+  /* 收起时给一句会自己淡掉的小提示。原来点了中间就"唰"地全空，
+     没有任何反馈，用户的第一反应是黑屏了。 */
+  if (hide) flashHudHint();
+  else { const el = document.getElementById('hudHint'); if (el) el.classList.remove('show'); }
 }
 $('hudBtn').addEventListener('click', () => {
   setHud(!document.body.classList.contains('hud-hide'));
