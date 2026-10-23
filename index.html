@@ -1949,6 +1949,7 @@ body.is-day .bet-panel{
       <div class="grp-body">
         <label class="check"><input type="checkbox" id="godLog" checked> 记录夜间行动明细</label>
         <label class="check"><input type="checkbox" id="showWhisper" checked> 显示玩家的内心独白</label>
+        <label class="check"><input type="checkbox" id="suppressThinking" checked> 请求时关闭模型的思考链（推荐）</label>
         <label class="check"><input type="checkbox" id="ttsEnabled" checked> 语音播报发言</label>
         <div class="row2" style="margin-top:9px">
           <div class="field">
@@ -2127,31 +2128,52 @@ class StopGame extends Error { constructor(){ super('stopped'); } }
 /* ============================================================
    模型池
    ============================================================ */
+/* ============================================================
+   模型档案
+   「把思考写进正文」的概率各家差得很远：推理模型几乎必漏，普通模型基本不漏。
+   全局正则一刀切会误伤——长发言被当成英文思考，白白重试两次，
+   起名退化成「玩家N」这类事故就是这么来的。
+   每个 provider 声明两件事：
+     reasoner  这家默认会出思考链
+     noThink   请求级关思考的写法（各家参数名不一样，收在这里）
+   再叠一层按 specKey 的泄漏率统计，漏得多的自动升档，不用手工维护名单。
+   ============================================================ */
 const PROVIDERS = {
   deepseek: {
     name: 'DeepSeek', short: 'DeepSeek', base: 'https://api.deepseek.com/v1',
-    models: ['deepseek-flash', 'deepseek-v4-pro'], keyHint: 'sk-...'
+    models: ['deepseek-flash', 'deepseek-v4-pro'], keyHint: 'sk-...',
+    reasoner: true,
+    noThink: b => { b.reasoning_effort = 'low'; }
   },
   doubao: {
     name: '豆包·火山方舟', short: '豆包', base: 'https://ark.cn-beijing.volces.com/api/v3',
     models: ['doubao-seed-2-1-lite', 'doubao-seed-2-1-turbo-260628', 'doubao-seed-2-1-pro-260915'],
-    keyHint: '方舟 Key；若用接入点，模型处填 ep- 开头的 ID'
+    keyHint: '方舟 Key；若用接入点，模型处填 ep- 开头的 ID',
+    reasoner: true,
+    noThink: b => { b.thinking = { type: 'disabled' }; }
   },
   kimi: {
     name: 'Kimi', short: 'Kimi', base: 'https://api.moonshot.cn/v1',
-    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6'], keyHint: 'sk-...'
+    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6'], keyHint: 'sk-...',
+    reasoner: true,
+    noThink: b => { b.thinking = { type: 'disabled' }; }
   },
   zhipu: {
     name: '智谱 GLM', short: 'GLM', base: '/api/proxy?target=https://open.bigmodel.cn/api/paas/v4',
-    models: ['glm-5.3-flash', 'glm-5.3', 'glm-5.2'], keyHint: '...'
+    models: ['glm-5.3-flash', 'glm-5.3', 'glm-5.2'], keyHint: '...',
+    noThink: b => { b.thinking = { type: 'disabled' }; }
   },
   qwen: {
     name: '通义千问', short: 'Qwen', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: ['qwen3.8-flash', 'qwen3.8-max', 'qwen3.7-plus'], keyHint: 'sk-...'
+    models: ['qwen3.8-flash', 'qwen3.8-max', 'qwen3.7-plus'], keyHint: 'sk-...',
+    reasoner: true,
+    noThink: b => { b.enable_thinking = false; }
   },
   hunyuan: {
     name: '腾讯混元', short: '混元', base: '/api/proxy?target=https://tokenhub.tencentmaas.com/v1',
-    models: ['hy4-preview', 'hy3', 'hunyuan-role-latest'], keyHint: 'sk-...'
+    models: ['hy4-preview', 'hy3', 'hunyuan-role-latest'], keyHint: 'sk-...',
+    reasoner: true,
+    noThink: b => { b.thinking = { type: 'disabled' }; }
   },
   ollama: {
     name: '本地 Ollama', short: '本地', base: 'http://localhost:11434/v1',
@@ -2279,6 +2301,7 @@ function readCfg() {
     autoPace: paceRaw === 'auto',
     godLog: $('godLog').checked,
     showWhisper: $('showWhisper') ? $('showWhisper').checked : true,
+    suppressThinking: $('suppressThinking') ? $('suppressThinking').checked : true,
     autoIdentity: $('autoIdentity') ? $('autoIdentity').checked : true,
     mode: MODE,
     humanSeat: HUMAN,
@@ -2295,6 +2318,7 @@ function saveCfg() {
       temp: c.temp, conc: c.conc, timeout: c.timeout / 1000,
       allowNoKey: c.allowNoKey, speechLen: c.speechLen, paceRaw: c.paceRaw,
       godLog: c.godLog, showWhisper: c.showWhisper, autoIdentity: c.autoIdentity,
+      suppressThinking: c.suppressThinking,
       mode: c.mode, humanSeat: c.humanSeat, diff: c.diff,
       poolv: POOL_VERSION,
       remember: $('rememberKey').checked,
@@ -2334,6 +2358,7 @@ function loadCfg() {
     }
     if (c.godLog != null) $('godLog').checked = !!c.godLog;
     if (c.showWhisper != null && $('showWhisper')) $('showWhisper').checked = !!c.showWhisper;
+    if (c.suppressThinking != null && $('suppressThinking')) $('suppressThinking').checked = !!c.suppressThinking;
     if (c.autoIdentity != null && $('autoIdentity')) $('autoIdentity').checked = !!c.autoIdentity;
     if (c.mode) MODE = c.mode === 'play' ? 'play' : 'watch';
     if (c.humanSeat) HUMAN = Math.max(1, Number(c.humanSeat) || 1);
@@ -2427,6 +2452,91 @@ function metaEchoScore(text) {
   return hits ? hits.length : 0;
 }
 
+/* ── 模型档案的运行时：统计 + 自动升档 ──────────────────────
+   判据不是「这家是不是推理模型」，而是实际漏了多少次。
+   样本至少 4 次、泄漏率过 1/4，就把这家升成 leaky 档：
+   speak 任务改 JSON 输出、抢救阈值收紧。系统自愈。 */
+const MODEL_STAT = new Map();    // "provider|model" -> { calls, leaks }
+const MODEL_PROFILE = new Map(); // "provider|model" -> 档位
+
+function modelProfile(spec) {
+  const k = specKey(spec);
+  let p = MODEL_PROFILE.get(k);
+  if (p) return p;
+  const meta = PROVIDERS[(spec || {}).provider] || PROVIDERS.custom;
+  p = {
+    leaky: !!meta.reasoner,                       // 推理模型默认按会漏处理
+    disableThinking: meta.noThink ? 'param' : 'none',
+    jsonOut: false,                               // 自动升档后才开
+    stripLevel: meta.reasoner ? 2 : 1
+  };
+  MODEL_PROFILE.set(k, p);
+  return p;
+}
+
+function noteModelCall(spec) {
+  if (!spec) return;
+  const k = specKey(spec);
+  const st = MODEL_STAT.get(k) || { calls: 0, leaks: 0 };
+  st.calls++;
+  MODEL_STAT.set(k, st);
+}
+
+function noteModelLeak(spec) {
+  if (!spec) return;
+  const k = specKey(spec);
+  const st = MODEL_STAT.get(k) || { calls: 0, leaks: 0 };
+  st.leaks++;
+  MODEL_STAT.set(k, st);
+  if (st.calls < 4 || st.leaks / st.calls < 0.25) return;
+  const p = MODEL_PROFILE.get(k);
+  if (!p || p.leaky) return;
+  p.leaky = true;
+  p.jsonOut = true;
+  p.stripLevel = 3;
+  console.warn('模型档案：' + k + ' 泄漏率 ' + (st.leaks / st.calls).toFixed(2) + '，已自动升档');
+}
+
+/* ── 从正文里切出「真正要说的话」 ──────────────────────────
+   思考型模型不只在 reasoning 字段里漏，也经常在 content 前面粘一段分析。
+   思路：先找最后一个收尾词（「综上」「我认为」这类），它后面一般就是正式发言；
+   找不到就逐句丢掉「在讲自己怎么输出」的句子，剩下的拼起来。
+   注意不能用 lookbehind，iOS 16.4 以下不支持。 */
+const SPEAK_TAIL = /(综上|综上所述|总的来说|总之|所以我的发言|我的发言是|我(个)?人认为|我倾向于|我个人的看法|总结一下|最后)[：:，,]?\s*/g;
+
+function salvageSpeak(text) {
+  const t = String(text || '').trim();
+  if (!t) return '';
+  let cut = -1;
+  SPEAK_TAIL.lastIndex = 0;
+  let m;
+  while ((m = SPEAK_TAIL.exec(t))) cut = m.index + m[0].length;
+  if (cut >= 0) {
+    const tail = t.slice(cut).trim();
+    if (tail.length >= 8 && !looksLikeThinking(tail)) return tail;
+  }
+  const sents = t.match(/[^。！？!?\n]+[。！？!?]?/g) || [];
+  const keep = sents.filter(s => !looksLikeThinking(s) && metaEchoScore(s) === 0);
+  const joined = keep.join('').trim();
+  return joined.length >= 8 ? joined : '';
+}
+
+/* 连发言段都切不出来时的规则兜底：用 persona + 当前票型造一句。
+   总比沉默强——沉默在观众眼里就是「卡了」，而且模型钱已经烧了。 */
+function templateSpeech(p) {
+  let hot = null;
+  try {
+    const tally = accusedTally().filter(t => t.by.length >= 2);
+    if (tally.length) hot = tally[0].seat;
+  } catch (e) { /* accusedTally 还没定义时忽略 */ }
+  const openers = ['我嘴笨，就说直接的', '我不绕弯子', '按我一贯的脾气', '我没那么多长篇大论'];
+  const op = openers[(p && p.seat ? p.seat : 0) % openers.length];
+  if (hot != null) {
+    return op + '：' + hot + ' 号这轮被点了太多次，我这一票先挂上去看反应。';
+  }
+  return op + '：信息还不够，我这一轮先听，谁的话跟动作对不上我再开口。';
+}
+
 /* 从思考里捞「正式答案」。思考型模型经常把要提交的输出写在推理末尾，
    优先按【发言】标签取，取不到就拿最后一段（结论一般在最后）。
    这只是降级手段——正文为空时总得给点东西，总比把整局中断强。 */
@@ -2512,7 +2622,7 @@ function taskTemp(t) {
   return typeof v === 'number' ? v : null;
 }
 
-async function callLLM({ system, user, runId, maxTokens = 480, spec, temp }) {
+async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task }) {
   const cfg = CFG;
   const origin = spec || null;
 
@@ -2535,6 +2645,7 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp }) {
   /* 在一家模型上把一句请求打完：内部仍有三次尝试，
      但遇到 4xx 硬错立刻抛出，交给外层换人。 */
   const attemptOn = async (sp, base) => {
+    const prof = modelProfile(sp);
     const body = {
       model: sp.model,
       messages: [
@@ -2545,6 +2656,15 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp }) {
       max_tokens: maxTokens,
       stream: false
     };
+    /* 请求级关思考。推理模型把 CoT 写进 content，多半是它没被要求闭嘴——
+       先关掉源头，比重试三次再整句作废便宜一个量级。
+       写不进去（这家不认这个参数）也不致命，后面还有抢救和重试兜着。 */
+    if (prof.disableThinking === 'param' && CFG.suppressThinking) {
+      try {
+        const meta = PROVIDERS[sp.provider] || PROVIDERS.custom;
+        if (meta.noThink) meta.noThink(body);
+      } catch (e) { console.warn('关思考参数写入失败', e); }
+    }
     let lastErr = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       if (runId !== RUN) throw new StopGame();
@@ -2605,23 +2725,35 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp }) {
           throw new Error('模型连思考都没有返回，检查接口是否可用');
         }
         // 思考泄漏：英文推理、或满嘴「Wait/Hmm/instruction」在跟自己辩论。
-        // 重试两次仍不收敛，就宁可这一句不说，也绝不让思维链贴到牌桌上。
+        // 顺序反过来——先抢救，抢救不动才重试，重试也救不回来就返回空串，
+        // 让上层用规则兜底话说一句。宁可说得平庸，也不要让观众看到「卡了壳」，
+        // 更不能把思维链贴到公屏上（那等于自报狼队友）。
         // 例外是结构化输出：身份卡的 JSON 键名本来就是英文，英文字母占比能过半，
         // 按「英文化思维」去判会把好端端的 JSON 判掉，起名退化成「玩家N」。
         const structured = /^[\s]*[{[]/.test(content) && /"[A-Za-z_]+"\s*:/.test(content);
         if (!structured && looksLikeThinking(content)) {
+          noteModelLeak(sp);
+          const sal = salvageSpeak(content);
+          if (sal) {
+            console.warn('正文混入了思考过程，已切出发言段');
+            return sal;
+          }
           if (attempt < 2) {
             body.messages[0].content = system + '\n\n【强制】只输出角色要说的话，必须是简体中文。不要输出任何推理、分析、英文思考，也不要讨论规则。';
             body.max_tokens = Math.min(4000, body.max_tokens * 2);
             continue;
           }
-          throw new Error('模型连续输出思考过程，这一句已跳过');
+          // 重试两次仍切不出发言段：返回空，由调用方决定怎么兜底
+          console.warn('模型连续输出思考过程，已放弃这一句');
+          return '';
         }
         // 元叙述检测：只数「格式 / 字数 / 我应该先分析」这类真正在讲怎么输出的词。
         // 「所以」「但是」「我们」「【发言】」是正常发言和正常格式，不能算进去，
         // 否则一句长一点的发言就会被误判，白白重试两次。
         if (!structured && !content.includes('【发言】') && metaEchoScore(content) >= 2 && attempt < 2) {
           console.warn('检测到元叙述（' + metaEchoScore(content) + ' 处），重试一次');
+          const sal = salvageSpeak(content);
+          if (sal) return sal;
           body.messages[0].content = system + '\n\n【极其重要】绝对不要输出任何思考过程、分析过程、解释过程、格式说明。直接输出结果，不要说"我应该"、"注意要求"、"格式是"这类话。把思考放在心里，只说最终要输出的内容。';
           body.max_tokens = Math.min(4000, body.max_tokens * 2);
           continue;
@@ -2657,6 +2789,7 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp }) {
 
     let content = '';
     try {
+      noteModelCall(sp);
       content = await attemptOn(sp, base);
     } catch (e) {
       if (e instanceof StopGame) throw e;
@@ -3035,6 +3168,26 @@ function cleanSpoken(raw) {
 
 function splitSpeak(raw) {
   const t = String(raw || '');
+
+  /* JSON 输出模式。对「容易把思考写进正文」的模型，提示词会改成
+     只输出 {"心声":..,"发言":..}——元叙述和英文思考在 JSON 里几乎无处落脚。
+     优先解析 JSON，失败了再退回原来的标签切分，两条路都能走通。 */
+  if (/^\s*\{/.test(t) && /"(心声|发言|whisper|body)"/.test(t)) {
+    let j = extractJSON(t);
+    if (!j) {
+      const get = k => {
+        const m = t.match(new RegExp('"' + k + '"\\s*:\\s*"([\\s\\S]*?)"'));
+        return m ? m[1].trim() : '';
+      };
+      j = { 心声: get('心声'), 发言: get('发言') };
+    }
+    const w = String(j['心声'] || j.whisper || '').trim();
+    const b = String(j['发言'] || j.body || j.speech || '').trim();
+    if (b) {
+      return { whisper: w ? clip(w.replace(/\s+/g, ''), 36) : '', body: cleanSpoken(b) };
+    }
+  }
+
   let whisper = '';
   let body = t;
 
@@ -3756,13 +3909,20 @@ function outputContract(task, wolf, p) {
   const len = LEN_SPEC[CFG.speechLen] || LEN_SPEC.normal;
   switch (task) {
     case 'speak': {
+      /* 对会自动升档成「会漏」的模型，改用 JSON 输出。
+         散文里元叙述和英文思考到处都能落脚，JSON 的键值结构让它们很难混进去，
+         而且我们已经有 extractJSON + salvageFields 可以兜底解析。 */
+      const jsonOut = !!(p && p.spec && modelProfile(p.spec).jsonOut);
       const arr = [
         '【本回合输出】',
-        '轮到你白天发言。严格只输出两段，不要多写别的：',
-        '【心声】不超过 18 字，写你此刻真实的盘算。观众看得到，桌上其他人看不到。' +
-          (wolf ? '可以暴露你真实的算计。' : '可以不体面，也可以怂。'),
-        '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。',
-        '这一段必须做到三件事：',
+        jsonOut
+          ? '轮到你白天发言。只输出一个 JSON 对象，不要写代码块围栏、不要任何解释：\n' +
+            '{"心声":"不超过18字，你此刻真实的盘算","发言":"你在牌桌上的正式发言，长度 ' + len + '"}'
+          : '轮到你白天发言。严格只输出两段，不要多写别的：\n' +
+            '【心声】不超过 18 字，写你此刻真实的盘算。观众看得到，桌上其他人看不到。' +
+            (wolf ? '可以暴露你真实的算计。' : '可以不体面，也可以怂。') + '\n' +
+            '【发言】你在牌桌上的正式发言，所有人都会听到，长度 ' + len + '。',
+        '发言这一段必须做到三件事：',
         '一、点名。至少对一个人下判断，写成「几号 + 名字」，说清你信他还是不信他、依据是什么。泛泛而谈不算发言。',
         '二、接话。前一个人刚说过什么，你要么顺着推一步，要么直接不同意；不要把他说过的话换个说法再讲一遍。',
         '三、收尾。最后一句给出你这一轮的态度：投谁，或者暂时留着谁。'
@@ -6150,7 +6310,8 @@ async function dayPhase(id) {
           user: parts.join('\n\n'),
           runId: id,
           maxTokens: CFG.speechLen === 'long' ? 1600 : CFG.speechLen === 'short' ? 700 : 1100,
-          spec: p.spec
+          spec: p.spec,
+          task: 'speak'
         });
         let sp = splitSpeak(await askSpeech());
         /* 狼人白天把底牌说漏嘴了：这一遍作废，加重语气重说一次 */
@@ -6167,7 +6328,12 @@ async function dayPhase(id) {
             '\n\n【重来】你上一遍把心里话和公开发言混在一起了。严格按格式重说：' +
             '先【心声】一句话，再【发言】一段话，发言里不许出现"心声"两个字。'));
         }
-        if (!sp.body) sp = { body: '（张了张嘴，没说出话）', whisper: sp.whisper };
+        /* 还是空的：模型这一轮彻底不配合。用规则造一句——按他的脾气和当前票型
+           给个态度，总比「张了张嘴没说出话」好看，观众也不会以为游戏卡了。 */
+        if (!sp.body) {
+          godMsg(p.name + ' 这一轮没接上话，已用他的风格补一句', '⚠️');
+          sp = { body: templateSpeech(p), whisper: '' };
+        }
         parts2 = sp;
       }
       card.set(parts2.body, parts2.whisper);
@@ -6256,10 +6422,12 @@ async function dayPhase(id) {
                   ' 票数相同，进入 PK。\n只有一轮机会，说 2 句为自己辩护，并指出对手的问题。',
             runId: id,
             maxTokens: 900,
-            spec: p.spec
+            spec: p.spec,
+            task: 'speak'
           });
-          const sp = splitSpeak(text);
-          body.set(sp.body || '（想把话说清楚，但没说出来）', sp.whisper);
+          let sp = splitSpeak(text);
+          if (!sp.body) sp = { body: templateSpeech(p), whisper: sp.whisper };
+          body.set(sp.body, sp.whisper);
           if (sp.whisper) p.whispers.push({ round: S.round, text: sp.whisper });
         }
       } catch (e) {
@@ -7776,7 +7944,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'f' || e.key === 'F') toggleFast();
 });
 
-['temp','conc','timeout','speechLen','pace','godLog','allowNoKey','rememberKey','showWhisper','autoIdentity']
+['temp','conc','timeout','speechLen','pace','godLog','allowNoKey','rememberKey','showWhisper','autoIdentity','suppressThinking']
   .forEach(id => {
     const el = $(id);
     if (!el) return;
