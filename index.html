@@ -867,20 +867,25 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   border:1px solid var(--line-soft);border-radius:var(--r-md);margin-bottom:9px;
   background:var(--ink-700);overflow:hidden;
 }
+/* 分组标题做成一条有底色的标题栏，不再是裸的一行文字——
+   六七个 details 平铺时，没有底色就分不清哪行是标题哪行是内容 */
 .grp>summary{
   padding:10px 12px;font-size:12.3px;font-weight:600;color:var(--text-2);cursor:pointer;
   list-style:none;display:flex;align-items:center;gap:9px;user-select:none;
   transition:.16s;letter-spacing:.03em;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+  border-bottom:1px solid transparent;
 }
+.grp[open]>summary{border-bottom-color:var(--line-soft)}
 .grp>summary::-webkit-details-marker{display:none}
 .grp>summary::before{
   content:'';width:0;height:0;border-left:4px solid var(--text-3);
   border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;
-  transition:transform .2s var(--ease);
+  transition:transform .2s var(--ease);flex-shrink:0;
 }
 .grp[open]>summary::before{transform:rotate(90deg)}
 .grp>summary:hover{background:var(--ink-600)}
-.grp-body{padding:3px 12px 13px}
+.grp-body{padding:11px 12px 13px}
 .field{margin-bottom:10px}
 .field:last-child{margin-bottom:0}
 .field label{display:block;font-size:11px;color:var(--text-3);margin-bottom:5px;letter-spacing:.05em}
@@ -894,9 +899,16 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 .inp::placeholder,.ta::placeholder{color:#4a5265}
 .ta{min-height:52px;resize:vertical;line-height:1.6;font-size:11.8px}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.hint{font-size:10.8px;color:var(--text-3);line-height:1.7;margin-top:5px;opacity:.85}
+/* 提示语左边补一道金色细线，和正文分开——满面板都是 10.8px 灰字时，
+   哪句是解释哪句是标签根本分不出来 */
+.hint{
+  font-size:10.8px;color:var(--text-3);line-height:1.7;margin-top:6px;opacity:.9;
+  padding-left:8px;border-left:2px solid rgba(217,169,75,.22);
+}
 .check{display:flex;align-items:center;gap:8px;font-size:11.8px;color:var(--text-3);cursor:pointer;margin-top:7px}
 .check input{accent-color:var(--gold);width:13px;height:13px;cursor:pointer}
+/* 勾选项之间加一道极淡的分隔，十几项堆在一起时能一条条数过来 */
+.check + .check{border-top:1px solid rgba(255,255,255,.035);padding-top:7px}
 
 .btn{
   width:100%;padding:10px 14px;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;
@@ -1120,28 +1132,76 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 .empty-note{font-size:12px;color:var(--text-3);font-style:italic}
 
 /* ══════════ 模型池 ══════════ */
+/* 每家一张卡片。原来是一串平铺的 input 加虚线分隔，新手看一眼就退——
+   现在头部是厂商，中间是模型名和密钥，底部永远有一个「去哪拿 Key」的直链，
+   整张卡片有底色有边界，填到哪一步一目了然。 */
 .pool-row{
-  padding:9px 0 10px;border-bottom:1px dashed var(--line-soft);
+  padding:11px 12px 12px;margin-bottom:9px;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+  border:1px solid var(--line);border-radius:var(--r-md);
+  transition:border-color .18s,background .18s;
 }
-.pool-row:first-child{padding-top:2px}
-.pool-row:last-child{border-bottom:none}
-.pool-top{display:flex;gap:6px;align-items:center;margin-bottom:6px}
-.pool-top .sel{flex:1 1 auto;min-width:0}
+.pool-row:hover{border-color:#33405a;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
+.pool-row:last-child{margin-bottom:0}
+.pool-top{display:flex;gap:6px;align-items:center;margin-bottom:9px}
+.pool-top .sel{flex:1 1 auto;min-width:0;font-weight:600}
 .pool-del{
   flex-shrink:0;width:24px;height:24px;border-radius:5px;background:var(--ink-600);
   border:1px solid var(--line);color:var(--text-3);font-size:14px;line-height:1;cursor:pointer;
   transition:.16s;
 }
 .pool-del:hover{border-color:rgba(207,68,51,.5);color:var(--blood)}
-.pool-row .inp{margin-bottom:5px}
-.pool-row .inp:last-of-type{margin-bottom:0}
+.pool-fields{display:flex;flex-direction:column;gap:7px}
+.pool-row .inp{margin-bottom:0}
+/* 密钥输入框和眼睛按钮并排，密钥框右边留出按钮的位置 */
+.p-keywrap{position:relative}
+.p-keywrap .inp{padding-right:34px}
+.p-eye{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  width:26px;height:26px;border:none;border-radius:5px;background:transparent;
+  color:var(--text-3);font-size:12px;line-height:1;cursor:pointer;
+  transition:.16s;opacity:.75;
+}
+.p-eye:hover{opacity:1;background:rgba(255,255,255,.07);color:var(--text-2)}
+.p-eye.on{color:var(--gold);opacity:1}
+/* 「去哪拿 Key」直链：整张卡片里最该被看见的东西 */
+.key-link{
+  display:flex;align-items:center;gap:8px;
+  margin-top:9px;padding:7px 10px;border-radius:7px;
+  background:rgba(217,169,75,.1);border:1px solid rgba(217,169,75,.26);
+  color:var(--gold);font-size:11px;font-weight:600;letter-spacing:.02em;
+  text-decoration:none;cursor:pointer;transition:.16s;
+}
+.key-link:hover{background:rgba(217,169,75,.18);border-color:rgba(217,169,75,.48)}
+.key-link .kl-ico{font-size:11px;flex-shrink:0}
+.key-link .kl-txt{line-height:1.45;min-width:0}
+.key-link .kl-txt b{
+  display:block;font-weight:600;font-size:10.5px;color:var(--text-2);
+  word-break:break-all;letter-spacing:.01em;
+}
+.key-link .kl-arrow{margin-left:auto;font-size:11px;opacity:.8;flex-shrink:0}
+/* 没有直链的（本地 Ollama / 自定义）用一句说明代替，弱化处理 */
+.key-note{
+  display:block;margin-top:8px;padding-left:1px;
+  font-size:10.8px;line-height:1.6;color:var(--text-3);
+}
+/* 隐私声明：敢不敢把 Key 填进来，取决于这句话说不说、说得清不清楚 */
+.privacy-note{
+  display:flex;gap:8px;align-items:flex-start;
+  margin-top:11px;padding:9px 10px;border-radius:var(--r-sm);
+  background:rgba(94,168,110,.09);border:1px solid rgba(94,168,110,.24);
+  font-size:10.8px;line-height:1.7;color:var(--text-2);
+}
+.privacy-note .pn-ico{flex-shrink:0;font-size:11px;line-height:1.6}
+.privacy-note b{color:var(--ok);font-weight:600}
 .pool-status{
-  display:none;font-size:10.8px;line-height:1.6;margin-top:5px;
-  padding-left:1px;word-break:break-word;
+  display:none;font-size:10.8px;line-height:1.6;margin-top:7px;
+  padding:5px 8px;border-radius:6px;word-break:break-word;
+  background:rgba(255,255,255,.04);
 }
 .pool-status.on{display:block}
-.pool-status.ok{color:var(--ok)}
-.pool-status.bad{color:#e0715c}
+.pool-status.ok{color:var(--ok);background:rgba(94,168,110,.12)}
+.pool-status.bad{color:#e0715c;background:rgba(207,68,51,.12)}
 .pool-status.wait{color:var(--text-3)}
 
 /* ══════════ 落座通知 ══════════ */
@@ -1899,12 +1959,22 @@ body.is-day .bet-panel{
     <details class="grp" open>
       <summary>模型池</summary>
       <div class="grp-body">
+        <div class="hint" style="margin-top:0;margin-bottom:10px">
+          先选一家、填模型名、贴上密钥，点「测试全部」能亮就绪。每家卡片下面的
+          <b style="color:var(--gold);font-weight:600">「官方控制台」</b>就是该厂商的办钥页面，
+          域名明写在按钮上，确认是官网再点。
+        </div>
         <div id="poolList"></div>
         <div class="btn-row">
           <button class="btn ghost" id="addModelBtn">添加一家</button>
           <button class="btn ghost" id="testAllBtn">测试全部</button>
         </div>
         <div class="hint">填几家就几家混战。开局按座位随机分配，同一家也可以出多个玩家。</div>
+        <div class="privacy-note">
+          <span class="pn-ico">🔒</span>
+          <span>密钥只存在你自己的浏览器里，由它直接发给对应厂商，<b>本站不收集、不转发、不存储</b>。
+          不想留痕就每次都手动填。</span>
+        </div>
         <label class="check"><input type="checkbox" id="rememberKey"> 在本机记住密钥</label>
         <label class="check"><input type="checkbox" id="allowNoKey"> 允许空密钥（本地部署）</label>
       </div>
@@ -2169,54 +2239,69 @@ class StopGame extends Error { constructor(){ super('stopped'); } }
    「把思考写进正文」的概率各家差得很远：推理模型几乎必漏，普通模型基本不漏。
    全局正则一刀切会误伤——长发言被当成英文思考，白白重试两次，
    起名退化成「玩家N」这类事故就是这么来的。
-   每个 provider 声明两件事：
+   每个 provider 声明四件事：
      reasoner  这家默认会出思考链
      noThink   请求级关思考的写法（各家参数名不一样，收在这里）
-   再叠一层按 specKey 的泄漏率统计，漏得多的自动升档，不用手工维护名单。
+     keyUrl    密钥在哪办（新手最大的坎：填了模型名找不到 Key 去哪拿）
+     keySteps  一句人话说明怎么办，太长反而不看
    ============================================================ */
 const PROVIDERS = {
   deepseek: {
     name: 'DeepSeek', short: 'DeepSeek', base: 'https://api.deepseek.com/v1',
     models: ['deepseek-flash', 'deepseek-v4-pro'], keyHint: 'sk-...',
     reasoner: true,
-    noThink: b => { b.reasoning_effort = 'low'; }
+    noThink: b => { b.reasoning_effort = 'low'; },
+    keyUrl: 'https://platform.deepseek.com/api_keys',
+    keySteps: '手机号或微信登录 → 左侧「API keys」→「创建 API key」→ 复制 sk- 开头那串'
   },
   doubao: {
     name: '豆包·火山方舟', short: '豆包', base: 'https://ark.cn-beijing.volces.com/api/v3',
     models: ['doubao-seed-2-1-lite', 'doubao-seed-2-1-turbo-260628', 'doubao-seed-2-1-pro-260915'],
     keyHint: '方舟 Key；若用接入点，模型处填 ep- 开头的 ID',
     reasoner: true,
-    noThink: b => { b.thinking = { type: 'disabled' }; }
+    noThink: b => { b.thinking = { type: 'disabled' }; },
+    keyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey',
+    keySteps: '火山方舟控制台 → 左侧「API Key」→ 创建；模型名要填「推理接入点」里的 ep- 开头的 ID，不是模型原名'
   },
   kimi: {
     name: 'Kimi', short: 'Kimi', base: 'https://api.moonshot.cn/v1',
     models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6'], keyHint: 'sk-...',
     reasoner: true,
-    noThink: b => { b.thinking = { type: 'disabled' }; }
+    noThink: b => { b.thinking = { type: 'disabled' }; },
+    keyUrl: 'https://platform.moonshot.cn/console/api-keys',
+    keySteps: '手机号登录 → 右上角头像 →「账户管理」→ 左侧「API Key 管理」→ 创建'
   },
   zhipu: {
     name: '智谱 GLM', short: 'GLM', base: '/api/proxy?target=https://open.bigmodel.cn/api/paas/v4',
     models: ['glm-5.3-flash', 'glm-5.3', 'glm-5.2'], keyHint: '...',
-    noThink: b => { b.thinking = { type: 'disabled' }; }
+    noThink: b => { b.thinking = { type: 'disabled' }; },
+    keyUrl: 'https://open.bigmodel.cn/usercenter/apikeys',
+    keySteps: '手机号登录 → 右上角「工作台」→ 左侧「API keys」→ 添加；新用户送一批免费额度'
   },
   qwen: {
     name: '通义千问', short: 'Qwen', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     models: ['qwen3.8-flash', 'qwen3.8-max', 'qwen3.7-plus'], keyHint: 'sk-...',
     reasoner: true,
-    noThink: b => { b.enable_thinking = false; }
+    noThink: b => { b.enable_thinking = false; },
+    keyUrl: 'https://bailian.console.aliyun.com/?apiKey=1',
+    keySteps: '阿里云账号登录百炼控制台 → 右上角头像 →「API-KEY」→ 创建；每个模型有免费额度'
   },
   hunyuan: {
     name: '腾讯混元', short: '混元', base: '/api/proxy?target=https://tokenhub.tencentmaas.com/v1',
     models: ['hy4-preview', 'hy3', 'hunyuan-role-latest'], keyHint: 'sk-...',
     reasoner: true,
-    noThink: b => { b.thinking = { type: 'disabled' }; }
+    noThink: b => { b.thinking = { type: 'disabled' }; },
+    keyUrl: 'https://console.cloud.tencent.com/hunyuan/api-key',
+    keySteps: '腾讯云账号登录混元控制台 → 左侧「API Key 管理」→ 新建 API Key；走本站代理，不用配白名单'
   },
   ollama: {
     name: '本地 Ollama', short: '本地', base: 'http://localhost:11434/v1',
-    models: ['qwen2.5:7b', 'llama3.1:8b'], keyHint: '可留空'
+    models: ['qwen2.5:7b', 'llama3.1:8b'], keyHint: '可留空',
+    keySteps: '先在本机装 Ollama 并 ollama pull 一个模型；Key 随便填，地址默认 localhost:11434'
   },
   custom: {
-    name: '自定义', short: '自定', base: '', models: [], keyHint: 'API Key'
+    name: '自定义', short: '自定', base: '', models: [], keyHint: 'API Key',
+    keySteps: '填任何 OpenAI 兼容接口的地址和密钥，模型名照抄对方文档'
   }
 };
 
@@ -2227,6 +2312,15 @@ function defaultPool() {
   return [{ provider: 'deepseek', model: 'deepseek-flash', key: '', base: PROVIDERS.deepseek.base }];
 }
 
+/* 从密钥直链里取域名显示。新手不敢点陌生链接，把 platform.deepseek.com
+   这类官网域名明摆在按钮上，比写十句"请放心"都管用。 */
+function keyHost(url) {
+  try { return new URL(url).host; } catch (e) { return String(url || ''); }
+}
+
+/* 每家模型做成一张卡片：厂商 + 模型名 + 密钥，密钥那一行永远带一个
+   「去哪拿」的直链。新手最大的坎不是不会填，是不知道该去哪办 Key——
+   原来只有一句 keyHint（"sk-..."），等于什么都没说。 */
 function renderPool() {
   const box = $('poolList');
   if (!box) return;
@@ -2241,14 +2335,30 @@ function renderPool() {
     const baseField = p.provider === 'custom'
       ? '<input class="inp p-base" value="' + esc(p.base || '') + '" placeholder="接口地址，例如 https://api.xxx.com/v1">'
       : '';
+    /* 密钥入口：有直链的渲染成可点的胶囊，没有的（本地 Ollama / 自定义）给一句说明。
+       链接上必须把真实域名露出来——只写「去办 Key」别人不敢点，
+       以为是钓鱼；把 platform.deepseek.com 摆在这儿，一眼就知道是官网。 */
+    const keyHelp = meta.keyUrl
+      ? '<a class="key-link" href="' + esc(meta.keyUrl) + '" target="_blank" rel="noopener noreferrer" ' +
+        'title="' + esc(meta.keySteps || '') + '">' +
+        '<span class="kl-ico">🔑</span>' +
+        '<span class="kl-txt">官方控制台<br><b>' + esc(keyHost(meta.keyUrl)) + '</b></span>' +
+        '<span class="kl-arrow">↗</span></a>'
+      : '<span class="key-note">' + esc(meta.keySteps || meta.keyHint || 'API Key') + '</span>';
     return '<div class="pool-row" data-i="' + i + '">' +
         '<div class="pool-top">' +
-          '<select class="sel p-provider">' + opts + '</select>' +
+          '<select class="sel p-provider" title="选一家模型厂商">' + opts + '</select>' +
           '<button class="pool-del" title="移除这一家">×</button>' +
         '</div>' +
-        '<input class="inp p-model" list="' + listId + '" value="' + esc(p.model || '') + '" placeholder="模型名">' + dl +
-        baseField +
-        '<input class="inp p-key" type="password" value="' + esc(p.key || '') + '" placeholder="' + esc(meta.keyHint || 'API Key') + '">' +
+        '<div class="pool-fields">' +
+          '<input class="inp p-model" list="' + listId + '" value="' + esc(p.model || '') + '" placeholder="模型名" title="填这家可用的模型名">' + dl +
+          '<div class="p-keywrap">' +
+            '<input class="inp p-key" type="password" value="' + esc(p.key || '') + '" placeholder="' + esc(meta.keyHint || 'API Key') + '" title="这一家的 API 密钥">' +
+            '<button class="p-eye" type="button" title="显示 / 隐藏密钥" aria-label="显示或隐藏密钥">👁</button>' +
+          '</div>' +
+          baseField +
+        '</div>' +
+        keyHelp +
         '<div class="pool-status"></div>' +
       '</div>';
   }).join('');
@@ -2271,6 +2381,15 @@ function renderPool() {
       POOL[i].key = e.target.value.trim();
     });
     row.querySelector('.p-key').addEventListener('change', saveCfg);
+    /* 眼睛：密钥是密码框，粘贴前想核对一眼就得切明文，不然经常贴错 */
+    const eye = row.querySelector('.p-eye');
+    if (eye) eye.addEventListener('click', () => {
+      const inp = row.querySelector('.p-key');
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      eye.textContent = show ? '🙈' : '👁';
+      eye.classList.toggle('on', show);
+    });
     const bf = row.querySelector('.p-base');
     if (bf) {
       bf.addEventListener('input', e => { POOL[i].base = e.target.value.trim(); });
