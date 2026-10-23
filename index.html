@@ -214,6 +214,23 @@ body.is-day .brand-mark{
   border-left:1px solid var(--line);padding:14px 14px 0;
   display:flex;flex-direction:column;
 }
+/* 面板顶端一道金色发丝线：中间亮、两端透明，1px。
+   刻意用 background-image 画在滚动容器自身的背景层上，不用伪元素——
+   伪元素要定位上下文，而给面板加 position:relative 会压过移动端
+   .panel{position:fixed}（特异度更高、写得更靠后），两块抽屉面板会
+   重新回到文档流，手机首屏直接被吃掉一半。这个坑别人踩过，绕开它。
+   background 默认 attachment:scroll，相对 padding box 定位，
+   内容滚动时线不动，正好一直标识面板顶部。 */
+.panel.left,.panel.right{
+  background-image:linear-gradient(90deg,transparent,rgba(217,169,75,.42) 50%,transparent);
+  background-size:100% 1px;
+  background-position:top;
+  background-repeat:no-repeat;
+}
+/* 暖白底上浅金看不见，压深一档 */
+body.is-day .panel.left,body.is-day .panel.right{
+  background-image:linear-gradient(90deg,transparent,rgba(157,116,42,.55) 50%,transparent);
+}
 /* 关键：details 作为 flex 子项会被压缩，导致内容被裁掉 */
 .panel.right > .grp{flex:0 0 auto}
 .panel.right > .panel-title{flex:0 0 auto}
@@ -292,22 +309,32 @@ body.is-day .brand-mark{
   position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;
 }
 body.home .stage-bg{opacity:1}
+/* 昼夜双图交叉淡化：夜图和昼图各占一层伪元素，靠 opacity 切换，
+   这样 background-image 不能动画的限制就绕开了，衔接是真正的淡入淡出 */
 .stage-bg::before,.stage-bg::after{
   content:'';position:absolute;inset:0;background-size:cover;
+  /* 夜景昼景是同一间牌室的同一机位，只差光。所以两张的裁切位置必须
+     写成同一个值——只要不一致，切换的瞬间家具位置就会跳一下，
+     "同一场景天亮了"的错觉立刻破功。 */
+  background-position:center 42%;
   /* 3.2 秒的交叉淡化。幕布只是半透明薄纱，天色渐变主要靠这层
      慢慢换图来完成——太快就又回到"黑一下换好了"的僵硬感 */
   transition:opacity 3.2s var(--ease),filter 3.2s var(--ease);
 }
 .stage-bg::before{
-  background-image:url(assets/bg/bg-night.jpg);background-position:center 24%;
-  opacity:1;filter:saturate(1.02) contrast(1.01) brightness(1.1);
+  background-image:url(assets/bg/bg-night.jpg);
+  opacity:1;
+  /* 新夜景整体偏暗（均值 28/255），提一档亮并加一点饱和，
+     让壁炉和吊灯的暖光透出来 */
+  filter:brightness(1.28) saturate(1.06) contrast(1.04);
 }
 .stage-bg::after{
-  /* 白天用 bg-day.jpg：这张图本身偏暗，靠提亮滤镜 + 暖白纱罩做成「阳光照进来的暖白」 */
   background-image:url(assets/bg/bg-day.jpg);
-  background-position:center 46%;
   opacity:0;
-  filter:brightness(1.42) saturate(.8) contrast(.92) sepia(.12);
+  /* 新昼景本身已经是明亮的阳光房（均值 88/255），原来那套
+     brightness(1.42) 是为偏暗的旧图准备的，照搬会直接过曝。
+     这里只做轻微校色，亮度基本不动。 */
+  filter:brightness(1.04) saturate(.98) contrast(1.02) sepia(.05);
 }
 body.is-day .stage-bg::before{opacity:0}
 body.is-day .stage-bg::after{opacity:1}
@@ -404,12 +431,74 @@ body.replay-mode .stage-bg{left:0}
 .role-cell .rc-state{font-size:10px;color:var(--text-3);margin-top:2px}
 @media (max-width:620px){ .roles-grid{grid-template-columns:repeat(2,1fr)} }
 
+/* ══════════ 白天主题：硬编码深色弹层补一套暖纸皮肤 ══════════
+   白天主题靠改 --ink-* 那一组变量整体切换，用变量的元素自动跟上。
+   但下面这几个浮层把底色写死成了近黑，变量管不到它们，白天打开就是
+   一块黑洞悬在暖白界面上，看着像渲染坏了；浅色标签字落在近黑底上
+   更是等于一排看不见的字。统一换成暖纸：纸底、深棕字、看得见的分隔线，
+   阴影压到与暖白界面同一档，不再像一块悬空的黑。 */
+body.is-day .sound-menu{
+  background:linear-gradient(180deg,rgba(253,249,240,.98),rgba(242,234,216,.96));
+  border-color:rgba(157,116,42,.34);
+  box-shadow:0 12px 32px rgba(58,46,26,.26),0 2px 6px rgba(58,46,26,.12);
+}
+body.is-day .ask-card,
+body.is-day .deal-card{
+  background:linear-gradient(180deg,rgba(252,248,238,.98),rgba(240,232,214,.97));
+  border-color:rgba(157,116,42,.4);
+  box-shadow:0 20px 54px rgba(58,46,26,.3);
+}
+body.is-day .end-banner .eb-inner{
+  background:rgba(250,245,234,.86);
+  border-color:rgba(157,116,42,.42);
+  box-shadow:0 18px 60px rgba(58,46,26,.28);
+}
+/* 面板里那些半透明白底的卡片：暖白底上 .045 的白等于没提亮，
+   层次全塌了。白天换成暖纸底加一道看得见的金边。 */
+body.is-day .role-cell,
+body.is-day .ladder-row{
+  background:linear-gradient(180deg,rgba(255,253,247,.9),rgba(246,239,224,.82));
+  border-color:rgba(157,116,42,.24);
+}
+body.is-day .role-cell:hover,
+body.is-day .ladder-row:hover{border-color:rgba(157,116,42,.45);background:rgba(255,252,245,.95)}
+
 /* 结局背景：狼人胜/好人胜各一张，淡入盖在昼夜背景之上 */
 .stage-bg .end-bg{
   position:absolute;inset:0;opacity:0;pointer-events:none;
-  background-size:cover;background-position:center 32%;
+  /* 结算图是山脊/村庄的横构图，主体落在画面中部，纵向取中稍偏上 */
+  background-size:cover;background-position:center 45%;
   transition:opacity 3s var(--ease);
 }
+/* 雾气：三层极淡的径向渐变叠在一起，52 秒缓慢漂移。
+   底图是静止的油画，画面一动不动盯久了会僵，这一层让空气有流动感。
+   不透明度压到 .05~.085，保证只在余光里起效，不抢戏。
+   prefers-reduced-motion 下直接关掉——这不是信息，纯氛围。 */
+.stage-bg .mist{
+  position:absolute;inset:-25%;pointer-events:none;
+  background:
+    radial-gradient(42% 30% at 20% 34%,rgba(150,175,218,.085),transparent 70%),
+    radial-gradient(34% 24% at 68% 60%,rgba(150,175,218,.06),transparent 70%),
+    radial-gradient(28% 20% at 42% 80%,rgba(195,205,232,.05),transparent 70%);
+  filter:blur(3px);
+  animation:mistDrift 52s linear infinite alternate;
+}
+@keyframes mistDrift{
+  0%{transform:translate3d(-3%,-1.2%,0) scale(1.03)}
+  100%{transform:translate3d(3%,1.6%,0) scale(1.07)}
+}
+/* 白天是暖光，冷蓝雾会发脏，换成暖雾并压掉一半 */
+body.is-day .stage-bg .mist{
+  opacity:.55;
+  background:
+    radial-gradient(42% 30% at 20% 34%,rgba(255,236,200,.09),transparent 70%),
+    radial-gradient(34% 24% at 68% 60%,rgba(255,228,180,.065),transparent 70%),
+    radial-gradient(28% 20% at 42% 80%,rgba(255,246,220,.05),transparent 70%);
+}
+/* 结局背景是这一屏的主角，雾气收掉免得糊画面 */
+body.end-wolf .stage-bg .mist,
+body.end-good .stage-bg .mist{opacity:0}
+@media (prefers-reduced-motion:reduce){.stage-bg .mist{animation:none}}
 body.end-wolf .stage-bg .end-bg{
   opacity:1;
   background-image:url(assets/bg/win-wolf.jpg);
@@ -472,7 +561,37 @@ body.is-day .msg.phase{background:none;box-shadow:none;padding:34px 0 26px}
 body.is-day .msg.phase .p-main{color:#4a3c22}
 body.is-day .msg.phase .p-sub{color:#7a694a}
 body.home .stage-bg{opacity:1}
-body.home .stage-bg::after{background:linear-gradient(180deg,rgba(6,9,14,.66),rgba(6,9,14,.6) 46%,rgba(6,9,14,.92))}
+/* 首页标题需要更暗的衬底，但这层压暗不能写在 ::after 上——那个位置现在是
+   昼景图。原来这里用 background:linear-gradient 一句简写把昼景整块顶掉，
+   结果白天首页只剩一片灰黑。改成把 .shade::before 的强度提一档，
+   图片层不动。数值只比基础版高约 0.2，别压成一片黑。 */
+body.home .stage-bg .shade::before{
+  background:
+    radial-gradient(120% 66% at 50% 4%,rgba(8,11,17,.32),rgba(8,11,17,.6) 62%,rgba(6,9,14,.85)),
+    linear-gradient(180deg,rgba(6,9,14,.28),rgba(6,9,14,.6) 58%,rgba(6,9,14,.9));
+}
+/* 白天首页：那圈深色垫光是为夜间白字准备的，落在明亮的阳光油画上会糊成一坨灰渍。
+   换成暖白柔光，标题区变成亮底，深棕字才读得清。 */
+body.is-day.home .hero::before{
+  background:radial-gradient(ellipse at 50% 46%,rgba(253,248,238,.92),rgba(253,248,238,.66) 54%,transparent 78%);
+}
+body.is-day.home .hero h1{
+  color:#33260f;
+  text-shadow:0 1px 0 rgba(255,253,246,.55);
+}
+body.is-day.home .hero p{
+  color:#43351d;
+  text-shadow:0 1px 0 rgba(255,253,246,.85),0 1px 12px rgba(255,250,236,.8);
+}
+body.is-day.home .hero-chip{
+  background:rgba(255,252,244,.82);
+  border-color:rgba(157,116,42,.4);
+  color:#5a4720;
+  text-shadow:none;
+}
+body.is-day.home .hero-chip:hover{background:rgba(255,254,249,.94);border-color:rgba(157,116,42,.6)}
+body.is-day.home .hero-arrow{color:#4d3d20;text-shadow:0 1px 8px rgba(255,252,240,.8)}
+body.is-day.home .hero-arrow span{color:#8a6410}
 /* 底图上叠一层细噪点，压住塑料感 */
 .stage-bg .grain{
   position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;
@@ -831,6 +950,19 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   color:#e6ebf5;
   text-shadow:0 2px 22px rgba(6,9,14,.92),0 0 54px rgba(6,9,14,.8);
 }
+/* 标题下坠一枚金色菱形，字距拉开成一条装饰线。
+   仪式感这一下很便宜：一个字符，不加 DOM 不加图。 */
+.hero h1::after{
+  content:'◆';display:block;margin-top:14px;
+  font-size:9px;letter-spacing:1.4em;text-indent:1.4em;
+  color:rgba(217,169,75,.85);
+  text-shadow:0 0 12px rgba(217,169,75,.5);
+}
+/* 暖白底上浅金压不住，换成深金压底、亮金提亮，两端各留一点金属厚度 */
+body.is-day .hero h1::after{
+  color:#8a6410;
+  text-shadow:0 1px 0 rgba(255,248,228,.7),0 0 10px rgba(217,169,75,.35);
+}
 .hero p{
   color:#a4aec1;font-size:13px;margin-top:16px;letter-spacing:.05em;line-height:2;
   text-shadow:0 1px 14px rgba(6,9,14,.92);
@@ -968,11 +1100,31 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
   width:100%;padding:10px 14px;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;
   cursor:pointer;transition:.18s var(--ease);font-family:inherit;letter-spacing:.06em;
 }
+/* 主按钮用鎏金古铜，不用血红。
+   血红在这套界面里是「狼 / 死亡 / 利爪」的专属语义色，把它用在最该给人
+   安全感的「开始对局」上，语义和视觉双双串味。换成古铜鎏金后：
+   夜里挑亮一档在近黑面板上更跳，白天压深一档免得和暖白糊在一起，
+   顶部那道内高光与标题的鎏金渐变是同一种抛光质感。 */
 .btn.primary{
-  background:linear-gradient(180deg,#d4553f,#b23a29);color:#fff;
-  box-shadow:0 6px 18px rgba(207,68,51,.28);
+  background:linear-gradient(180deg,#c9913f 0%,#a86d26 52%,#8a5620 100%);
+  color:#fdf3e2;
+  box-shadow:inset 0 1px 0 rgba(255,238,200,.34),0 6px 18px rgba(168,109,38,.3);
 }
-.btn.primary:hover:not(:disabled){background:linear-gradient(180deg,#e0654e,#c2412e);transform:translateY(-1px);box-shadow:0 8px 22px rgba(207,68,51,.36)}
+.btn.primary:hover:not(:disabled){
+  background:linear-gradient(180deg,#dda653 0%,#bd7f2d 52%,#9c6124 100%);
+  transform:translateY(-1px);
+  box-shadow:inset 0 1px 0 rgba(255,244,214,.42),0 8px 24px rgba(184,124,44,.38);
+}
+/* 白天暖白面板上金底会糊，压深一档并收掉高光 */
+body.is-day .btn.primary{
+  background:linear-gradient(180deg,#a97a25 0%,#8c6117 52%,#6f4c11 100%);
+  color:#fdf5e4;
+  box-shadow:inset 0 1px 0 rgba(255,240,205,.26),0 6px 18px rgba(111,76,17,.28);
+}
+body.is-day .btn.primary:hover:not(:disabled){
+  background:linear-gradient(180deg,#bd8c2c 0%,#9e6f1b 52%,#805a14 100%);
+  box-shadow:inset 0 1px 0 rgba(255,246,220,.32),0 8px 22px rgba(140,97,20,.34);
+}
 .btn.primary:active:not(:disabled){transform:translateY(0)}
 .btn.ghost{background:var(--ink-600);color:var(--text-3);border:1px solid var(--line)}
 .btn.ghost:hover:not(:disabled){color:var(--text);background:var(--ink-500);border-color:#333d51}
@@ -1661,15 +1813,19 @@ body.is-day .rt-seat[data-camp="god"] .rt-role{background:rgba(104,76,20,.8)}
 
 /* 白天主题：圆桌用暖白薄纱，名字转深色，气泡仍是深卡托着浅字 */
 body.is-day .rt-table{
-  background:radial-gradient(58% 54% at 50% 44%,rgba(255,249,238,.3),rgba(250,240,224,.14) 66%,rgba(250,240,224,0) 80%);
-  border-color:rgba(157,116,42,.3);
-  box-shadow:inset 0 0 0 6px rgba(157,116,42,.05),inset 0 0 90px rgba(140,110,60,.14),0 0 60px rgba(157,116,42,.08);
+  /* 新昼景图中央是深棕木墙，原来那层浅暖白纱（.3 起）在深木上等于没画，
+     椭圆边框直接消失。改成暗色描边加一圈内阴影，在深木上反而立得住。 */
+  background:radial-gradient(58% 54% at 50% 44%,rgba(28,20,10,.42),rgba(20,14,7,.2) 66%,rgba(20,14,7,0) 80%);
+  border-color:rgba(217,169,75,.42);
+  box-shadow:inset 0 0 0 6px rgba(217,169,75,.07),inset 0 0 90px rgba(10,7,3,.42),0 0 60px rgba(217,169,75,.1);
 }
 body.is-day .rt-table.has-bubble{
   background:radial-gradient(62% 58% at 50% 44%,rgba(255,249,238,.18),rgba(250,240,224,.1) 70%,rgba(250,240,224,0) 84%);
 }
-body.is-day .rt-center b{color:#9d742a}
-body.is-day .rt-center span{color:#7a694a}
+/* 圆桌中央的「第 N 天」：白天背景不是浅底了，是深棕木墙，
+   深金深褐的字压上去等于隐形。改成亮字加一层深色描边阴影。 */
+body.is-day .rt-center b{color:#f6e9cd;text-shadow:0 2px 14px rgba(12,8,3,.9),0 0 4px rgba(12,8,3,.7)}
+body.is-day .rt-center span{color:#d8c6a2;text-shadow:0 1px 10px rgba(12,8,3,.85)}
 body.is-day .rt-seat .rt-name{color:#3a2f18;background:rgba(255,250,240,.82);border:1px solid rgba(157,116,42,.22)}
 body.is-day .rt-model{color:#8a6410;border-left-color:rgba(138,100,16,.3)}
 body.is-day .rt-seat.speaking .rt-name{color:#8a6410}
@@ -1949,7 +2105,7 @@ body.is-day .bet-panel{
   </aside>
 
   <main class="stage" id="stage">
-    <div class="stage-bg" id="stageBg"><span class="shade"></span><span class="end-bg"></span><span class="grain"></span></div>
+    <div class="stage-bg" id="stageBg"><span class="shade"></span><span class="end-bg"></span><span class="mist"></span><span class="grain"></span></div>
     <div class="curtain" id="curtain"><span class="curtain-orb"></span><span class="curtain-text" id="curtainText"></span></div>
     <div class="kill-slash" id="killSlash"></div>
     <div class="fx" id="fx"></div>
