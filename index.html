@@ -2521,6 +2521,71 @@ function salvageSpeak(text) {
   return joined.length >= 8 ? joined : '';
 }
 
+/* 上一位真正发了言的人。复读检测拿这一句跟他比。 */
+function lastSpeech() {
+  if (!S || !S.log) return null;
+  for (let i = S.log.length - 1; i >= 0; i--) {
+    const it = S.log[i];
+    if (it.kind === 'speech' && it.text && !/^（/.test(it.text)) {
+      return { text: it.text, seat: it.seat, name: it.name };
+    }
+  }
+  return null;
+}
+
+/* ============================================================
+   单局执念（story hook）
+   没有它，所有 AI 只根据公开信息推理——理性，但彼此之间没有张力，
+   十几个人像十几个分析师在开会。发牌时每人塞一条私人立场，
+   只给本人看（上帝视角也看不到），AI 立刻有「说不清但就是觉得」的起点，
+   观众有谈资，模型之间也会互相抓把柄。
+   ============================================================ */
+const HOOKS = [
+  '你第一眼就看{X}不顺眼，说不出理由，但你就是想让他出局',
+  '你总觉得{X}在护着某个人，像在打配合，虽然你没证据',
+  '你上一局就是被{X}这种话术骗惨了，这回他说的每句话你都要挑刺',
+  '你跟{X}有过私人过节，看他做什么都像在演',
+  '你莫名觉得{X}是好人，虽然他还没说过什么，这种直觉你也说不清',
+  '你注意到{X}每次投票都慢半拍，像在等谁先动',
+  '你觉得{X}太镇定了，镇定得不像这个阶段该有的样子',
+  '你记得{X}刚才有个小动作，你打算这一轮盯着他'
+];
+
+function hookFor(me, seats) {
+  const others = (seats || []).filter(s => s && s.seat !== me.seat);
+  if (!others.length) return '';
+  const target = others[Math.floor(Math.random() * others.length)];
+  const tmpl = HOOKS[Math.floor(Math.random() * HOOKS.length)];
+  return tmpl.replace(/\{X\}/g, target.seat + ' 号 ' + target.name);
+}
+
+/* 4-gram 重合率：拿这一句跟上一位的公开发言比，重合占比超过阈值算复读。
+   O(n) 小函数，不耗 API——复读检测必须便宜，否则比复读本身还拖节奏。 */
+function repeatScore(a, b) {
+  const grams = t => {
+    const s = String(t || '').replace(/[\s，。！？、,.!?；;：:]/g, '');
+    const out = new Set();
+    for (let i = 0; i + 4 <= s.length; i++) out.add(s.slice(i, i + 4));
+    return out;
+  };
+  const A = grams(a), B = grams(b);
+  if (!A.size || !B.size) return 0;
+  let hit = 0;
+  B.forEach(g => { if (A.has(g)) hit++; });
+  return hit / Math.min(A.size, B.size);
+}
+
+/* 划水硬指标。契约里「要点名/要有立场」只是 prompt 约束，模型照样能糊。
+   这里看三件事：够不够长、有没有点到具体的人、结尾有没有态度。 */
+function speechIsThin(p, body) {
+  const t = String(body || '');
+  if (t.length < 40) return true;
+  const alive = typeof aliveSeats === 'function' ? aliveSeats() : [];
+  const named = alive.some(s =>
+    t.indexOf(String(s.seat) + ' 号') >= 0 || (s.name && t.indexOf(s.name) >= 0));
+  return !named;
+}
+
 /* 连发言段都切不出来时的规则兜底：用 persona + 当前票型造一句。
    总比沉默强——沉默在观众眼里就是「卡了」，而且模型钱已经烧了。 */
 function templateSpeech(p) {
@@ -4173,6 +4238,12 @@ function privateInfo(p) {  const out = [];
       ? '昨晚你守护的是 ' + p.guardLast + ' 号，今晚不能重复守同一人'
       : '你还没有守护过任何人');
   }
+  /* 单局执念。这条只有本人知道，不许出现在公开发言里——
+     但它给了发言一个「我说不清为什么」的起点，比纯推理有人味。 */
+  if (p.hook) {
+    out.push('你心里有个说不清的疙瘩：' + p.hook +
+      '。这只能影响你的判断，不许在公开发言里直接引用它。');
+  }
   return out.join('\n');
 }
 
@@ -5730,7 +5801,8 @@ function initGame(seats, specs) {
         poisonUsed: false,
         guardLast: null,
         outRound: 0,
-        outReason: ''
+        outReason: '',
+        hook: mine ? '' : hookFor(s, seats)
       };
     }),
     round: 1,
@@ -6277,6 +6349,13 @@ async function dayPhase(id) {
       parts.push('【提示】你昨晚是狼人袭击的目标。');
     }
     parts.push('【你之前的发言与投票】\n' + memText(p));
+    /* 第一顺位发言天然没有信息可接，只给反向禁令（不许说「我先听一轮」）
+        它会不知所措。补一条正向策略：允许基于什么下判断。 */
+    if (i === 0) {
+      parts.push('【首轮策略】你是今天第一个开口的人，没有任何人的话可以参考。' +
+        '允许基于座位位置、发言顺序、面相和直觉下判断，' +
+        '但必须给出一个具体的最怀疑对象和一条站得住的依据，不许说"我先听听看"。');
+    }
     /* 预言家是好人把票合到一起的唯一抓手，不给提示的话它经常一整局都不吭声 */
     if (p.role === 'SEER' && S.round >= 2) {
       parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
@@ -6333,6 +6412,44 @@ async function dayPhase(id) {
         if (!sp.body) {
           godMsg(p.name + ' 这一轮没接上话，已用他的风格补一句', '⚠️');
           sp = { body: templateSpeech(p), whisper: '' };
+        }
+        /* 复读检测：跟上一位的公开发言算 4-gram 重合率，超阈值就带着
+           「这句 X 号刚说过」重来一次（一次、低温、额度减半）。
+           复读是发言质量最大的单一杀手，而且它自己不会好。 */
+        const prev = lastSpeech();
+        if (prev && repeatScore(prev.text, sp.body) > 0.35) {
+          godMsg(p.name + ' 这句跟上一位重合太高，已要求换个角度', '⚠️');
+          const again = splitSpeak(await callLLM({
+            system: sysPrompt(p, { task: 'speak' }) +
+              '\n\n【提醒】你刚才那段和 ' + prev.seat + ' 号 ' + prev.name +
+              ' 说过的话重合度太高，基本是在复读。换一个角度、换一个怀疑对象重新说，不许重复他的原句。',
+            user: parts.join('\n\n'),
+            runId: id,
+            maxTokens: 700,
+            spec: p.spec,
+            temp: 0.5,
+            task: 'speak'
+          }));
+          if (again.body) sp = again;
+        }
+        /* 划水硬校验：没有点到具体的人 / 太短 → 走一次便宜的补句。
+           比重说全段便宜一个量级，只要求补一句指认。 */
+        if (speechIsThin(p, sp.body)) {
+          godMsg(p.name + ' 这轮发言没有给出具体指认，已要求补一句', '⚠️');
+          try {
+            const patch = await callLLM({
+              system: '你是狼人杀桌上的玩家，用一句话补上你刚才没说清的部分。只输出这一句话，不要标签、不要解释。',
+              user: '你刚才说：「' + clip(sp.body, 200) + '」\n\n' +
+                '现在补一句：点名一个具体座位（几号 + 名字），说清你怀疑他的依据，或者你这一轮投谁。不超过 40 字。',
+              runId: id,
+              maxTokens: 120,
+              spec: p.spec,
+              temp: taskTemp('machine'),
+              task: 'speak'
+            });
+            const patchText = String(patch || '').replace(/【[^】]*】/g, '').trim();
+            if (patchText) sp.body = sp.body.replace(/[。\s]*$/, '') + '。' + patchText;
+          } catch (e) { if (e instanceof StopGame) throw e; }
         }
         parts2 = sp;
       }
