@@ -2489,8 +2489,10 @@ function noteModelLeak(spec) {
   st.leaks++;
   MODEL_STAT.set(k, st);
   if (st.calls < 4 || st.leaks / st.calls < 0.25) return;
-  const p = MODEL_PROFILE.get(k);
-  if (!p || p.leaky) return;
+  const p = modelProfile(spec);
+  /* 注意判断的是 jsonOut 不是 leaky：推理模型一开始 leaky 就是 true，
+     按 leaky 判会把所有推理模型挡在自动升档门外，jsonOut 永远开不了。 */
+  if (p.jsonOut) return;
   p.leaky = true;
   p.jsonOut = true;
   p.stripLevel = 3;
@@ -3994,6 +3996,10 @@ function outputContract(task, wolf, p) {
       ];
       arr.push('如果你上一轮已经被点到名，先用一句话回应那个质疑，再讲别人。' +
         '同一个比喻、同一种开场、同一句口头禅不要连着用两轮，桌上的人会听腻。');
+      /* 票向一致性。发言末尾单独给一行票向，投票时把它注入回去——
+         改口必须给理由。票型从散变得可追，观众也多了一个看点：
+         「你上一轮说要投 5 号，这一轮怎么投 7 号了？」 */
+      arr.push('最后另起一行，单独写【票向 N 号】，N 是你这一轮最想放逐的座位号（可以是暂时不动但盯上的人）。这一行必须写。');
       /* 给不同性格不同的展开顺序。之前所有人都是「点名→接话→收尾」的同一套，
          结果十几个人说话像一个模子刻出来的。 */
       arr.push(speakSkeleton(p));
@@ -5811,6 +5817,7 @@ function initGame(seats, specs) {
     news: [],
     history: [],
     votes: [],
+    wolfPlan: null,     // 狼队夜里商量好的白天归票目标
     revealed: false,
     speaking: null,
     winner: null,
@@ -6014,6 +6021,36 @@ async function nightPhase(id) {
     if (wolvesAlive.some(isMe)) pairs.push(HUMAN_NAME + '→' + (myKill == null ? '空' : nameOf(myKill)));
     godMsg('狼队定刀：' + nameOf(killSeat) + '（' + pairs.join('，') + '）', '🔪');
     packMsg('狼队定刀：' + nameOf(killSeat) + '（' + pairs.join('，') + '）', '🔪');
+
+    /* ---- 狼队白天归票 ----
+       原来狼队只有「别投队友」这一条负面约束，没有任何正面协同。
+       狼票分散是狼 AI 输掉白天最常见的原因：三只狼各投一个，好人反而聚起来了。
+       定完刀顺手让它们选一个白天要压票的目标，写进 S.wolfPlan，投票时注入。 */
+    S.wolfPlan = null;
+    const aiWolves = wolvesAlive.filter(w => !isMe(w));
+    if (aiWolves.length && S.round >= 2) {
+      const planCands = goodsAlive.filter(s => s.alive);
+      if (planCands.length >= 2) {
+        const planSeats = planCands.map(s => s.seat);
+        const planVotes = await pool(aiWolves, CFG.conc, async w =>
+          (await chooseSeat(w, id,
+            '【狼队白天归票】\n现在是第 ' + S.round + ' 夜，今晚的刀口已经定了。\n' +
+            publicState() +
+            '\n你的狼队友：' + wolvesAlive.filter(x => x.seat !== w.seat).map(x => x.seat + ' 号 ' + x.name).join('、') +
+            '\n\n再定一件事：白天投票时全队把票压到谁身上？不能选自己人。\n' +
+            '候选：' + planCands.map(s => s.seat + ' 号 ' + s.name).join('、') +
+            '\n只输出一个座位号。',
+            planSeats, w.spec, 'vote')).seat);
+        const ptally = new Map();
+        planVotes.filter(v => v != null).forEach(v => ptally.set(v, (ptally.get(v) || 0) + 1));
+        const ptop = topSeat(ptally);
+        if (ptop) {
+          S.wolfPlan = ptop.tie.length > 1 ? pick(ptop.tie) : ptop.seat;
+          godMsg('狼队商量好了，白天把票压给 ' + nameOf(S.wolfPlan), '🐺');
+          packMsg('狼队商量好了，白天把票压给 ' + nameOf(S.wolfPlan), '🐺');
+        }
+      }
+    }
   }
 
   S.killSeat = killSeat;
@@ -6360,6 +6397,9 @@ async function dayPhase(id) {
     if (p.role === 'SEER' && S.round >= 2) {
       parts.push('【策略提示】你是预言家。如果验到了狼，或者你觉得自己快被刀了，可以考虑公开跳预言家，' +
         '把第几夜验了谁、什么结果报出来——好人只有靠这个才能把票合到一起。跳不跳、什么时候跳，你自己判断。');
+      /* 有人跟你抢这张牌的时候，上面那句「你自己判断」会害死真预 */
+      const counter = seerCounterHint(p);
+      if (counter.length) parts.push(counter.join('\n'));
     }
     /* 狼队战术：悍跳与被查杀后的自爆 */
     if (isWolfRole(p.role) && S.round >= 2) {
@@ -6454,6 +6494,10 @@ async function dayPhase(id) {
         parts2 = sp;
       }
       card.set(parts2.body, parts2.whisper);
+      /* 记下这一轮的票向，投票时注入回去。改口可以，但必须给理由——
+         言行不一是观众最爱看的，也是 AI 互相抓的弹药。 */
+      const stance = String(parts2.body || '').match(/【票向\s*(\d{1,2})\s*号?】/);
+      if (stance) p.stance = { round: S.round, seat: Number(stance[1]) };
       p.mem.push('第 ' + S.round + ' 天我说：' + clip(parts2.body.replace(/\s+/g, ' '), 90));
       p.lastWhisper = parts2.whisper;
       if (parts2.whisper) p.whispers.push({ round: S.round, text: parts2.whisper });
@@ -6637,6 +6681,25 @@ function accusedTally() {
     .sort((a, b) => b.by.length - a.by.length || a.seat - b.seat);
 }
 
+/* 公开跳过身份的人。跨轮累计——第 1 轮跳过预言家的人，第 3 轮场面上
+   仍然算「有人跳」，不能只扫当轮。已经出局的不算，他的牌已经翻了。
+   预言家对跳是好人票能不能合到一起的关键，原来只有狼人侧知道
+   「有人跳预」，好人侧的预言家自己反而不知道有人抢。 */
+function publicClaims() {
+  /* 「我是预言家」「我才是预言家」「我才是真正的预言家」「我真的是预言家」
+     都得认——少一种写法，真预被悍跳压着打时系统就看不见有人抢牌。
+     注意别放宽到「他不是预言家」这种否定句。 */
+  const CLAIM = /我(?:才)?(?:是)?(?:真正|真的)?的?预言家|我跳预言家/;
+  const alive = new Set(aliveSeats().map(s => s.seat));
+  const out = [];
+  for (const it of (S.log || [])) {
+    if (it.kind !== 'speech') continue;
+    if (!alive.has(it.seat)) continue;
+    if (CLAIM.test(String(it.text || ''))) out.push(it.seat);
+  }
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
 /* 投票前给好人阵营的归票参照。
    狼队有夜聊和「不投队友」的纪律，六个人各投一个是好人输掉白天最常见的方式：
    票一散，最高票往往连三分之一都不到，平票重来，最后谁都没出去，夜里接着被刀。
@@ -6651,17 +6714,44 @@ function voteGuidance(p) {
     lines.push('【公开查杀】' + checked.map(nameOf).join('、') +
       ' 已经有人公开报出查验结果是狼。除非你手里有更硬的依据，这一票应该跟上去。');
   }
+  /* 有人公开跳预言家：把跳的人列出来。对跳时好人最容易被带散，
+     这里明确告诉每个人「场上有几个人在抢这张牌」。 */
+  const claims = publicClaims();
+  if (claims.length) {
+    lines.push('【本轮公开跳预言家的人】' + claims.map(nameOf).join('、') +
+      (claims.length > 1
+        ? '。有两个以上的人在抢这张牌，其中最多一个是真的——别急着跟任何一个，先看谁的验人链更完整。'
+        : '。目前只有他一个跳，可以考虑跟他的查验走。'));
+  }
   const tally = accusedTally().filter(t => t.by.length >= 2).slice(0, 3);
   if (tally.length) {
     lines.push('【本轮被点名最多的人】');
     tally.forEach(t => lines.push('· ' + nameOf(t.seat) + '：' + t.by.length + ' 人被点（' +
       t.by.map(n => n + ' 号').join('、') + '）'));
   }
-  if (checked.length || tally.length) {
+  if (checked.length || tally.length || claims.length) {
     lines.push('票拆成几份等于白白放过一个狼。没有明确反证，就把票压到上面的人身上，' +
       '与其各投各的，不如先把一个人送上票台。');
   }
   return lines;
+}
+
+/* 真预言家遇到有人悍跳：必须反跳并报完整验人链。
+   原来只告诉真预「可以考虑跳」，没告诉他「有人抢牌时你要反击」——
+   结果真预经常被悍跳的压着打，好人票没有锚。 */
+function seerCounterHint(p) {
+  if (p.role !== 'SEER') return [];
+  const claims = publicClaims().filter(s => s !== p.seat);
+  if (!claims.length) return [];
+  return [
+    '【对跳】' + claims.map(nameOf).join('、') + ' 也公开跳了预言家。',
+    '有人抢这张牌，沉默就等于把好人的锚让给他。你必须反跳：明确说「我才是预言家」，' +
+    '然后把你第几夜验了谁、什么结果完整报出来——验人链越完整，好人越知道该跟谁。',
+    p.seerLog.length
+      ? '你的验人记录：' + p.seerLog.map(r =>
+          '第 ' + r.round + ' 夜验 ' + r.seat + ' 号 ' + r.name + '，' + (r.isWolf ? '狼人' : '好人')).join('；')
+      : '你还没验到狼也没关系，照实说，编造验人记录容易被抓。'
+  ];
 }
 
 function speechOrder() {  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
@@ -6684,14 +6774,17 @@ async function runVote(id, restrict) {
   // 轮到我投票时先停下来等我
   let myPick = null;
   const me = voters.find(isMe);
+  const isPKVote = !!(restrict && restrict.length);
   if (me) {
     const myAllowed = cands.filter(s => s.seat !== me.seat);
     if (myAllowed.length) {
       myPick = await askHumanSafe(id, 'pick', {
-        title: restrict && restrict.length ? 'PK 再投一次' : '第 ' + S.round + ' 天投票',
-        tip: '选一个人放逐，也可以弃票',
+        title: isPKVote ? 'PK 再投一次' : '第 ' + S.round + ' 天投票',
+        /* PK 轮不许弃票：弃票 → 再平票 → 又没人出局 → 夜里接着被刀，节奏雪崩。
+           真人这一侧直接不给「弃票」这个按钮。 */
+        tip: isPKVote ? '平票对决，必须从这两人中选一个' : '选一个人放逐，也可以弃票',
         cands: myAllowed,
-        passLabel: '弃票'
+        passLabel: isPKVote ? '' : '弃票'
       });
     }
   }
@@ -6708,10 +6801,24 @@ async function runVote(id, restrict) {
           publicState(),
           privateInfo(p) ? '【只有你知道】\n' + privateInfo(p) : '',
           '【你之前的发言与投票】\n' + memText(p),
+          /* 票向一致性：你这一轮发言末尾写过【票向 N 号】，现在把它摆回来。
+             要改口可以，但必须给出理由。票型因此可追，观众也多了
+             「你上一轮说要投 5 号，这轮怎么投 7 号」这种看点。 */
+          p.stance && p.stance.round === S.round
+            ? '【你这一轮说过】你发言时说要投 ' + p.stance.seat + ' 号 ' +
+              nameOf(p.stance.seat) + '。要改投别人，先给一句说得通的理由。'
+            : '',
+          /* 狼队的白天归票共识：夜里商量好的，正面协同，不是负面约束 */
+          isWolfRole(p.role) && S.wolfPlan != null
+            ? '【狼队计划】夜里商量好了，今天全队把票压给 ' + S.wolfPlan + ' 号 ' +
+              nameOf(S.wolfPlan) + '。别投自己人，也别拆票。'
+            : '',
+          isWolfRole(p.role) ? '【狼队纪律】不要把票投给自己的狼队友。' : '',
           voteGuidance(p).join('\n'),
+          /* PK 轮不许弃票 */
+          isPKVote ? '这是平票后的 PK 轮，必须从这两人中选一个，不许弃票。' : '',
           '从下列玩家中选一个放逐：' + cands.filter(s => s.seat !== p.seat)
             .map(s => s.seat + ' 号 ' + s.name).join('、'),
-          isWolfRole(p.role) ? '【狼队纪律】不要把票投给自己的狼队友。' : '',
           '',
           '先输出一个座位号数字，再换行用一句话（不超过 20 字）说明投他的理由。'
         ].filter(Boolean).join('\n\n'), allowed, p.spec, 'vote');
@@ -6720,6 +6827,15 @@ async function runVote(id, restrict) {
       const firstLine = String(res.text || '').split('\n').map(s => s.trim()).find(Boolean) || '';
       let to = parseSeat(firstLine, allowed);
       if (to == null) to = res.seat;
+      /* 解析失败的兜底：原来是随机，等于把票扔进冷门。
+         改成投进这一轮的指认热点——宁可押在大家都在看的人身上，
+         也不要一张莫名其妙的票把水搅浑。PK 轮则从对决两人里挑热点。 */
+      if (to == null) {
+        const hot = accusedTally().filter(t => allowed.includes(t.seat));
+        to = hot.length ? hot[0].seat : pick(allowed);
+      }
+      /* PK 轮禁弃票：走到这里还没选出人，就从对决两人里强制挑一个 */
+      if (isPKVote && to == null) to = pick(allowed);
 
       const reason = clip(
         String(res.text || '').split('\n').slice(1).join(' ').replace(/\s+/g, ' ').trim(), 24);
@@ -6730,7 +6846,15 @@ async function runVote(id, restrict) {
     }
   });
 
-  if (me) picks.push({ from: me.seat, to: myPick });
+  if (me) {
+    /* PK 轮真人也不许弃票。UI 上已经不给「弃票」按钮了，这里防的是
+       直接关掉弹层——关掉就当弃票，又会滚回平票雪崩。 */
+    if (isPKVote && myPick == null) {
+      const forced = cands.filter(s => s.seat !== me.seat);
+      if (forced.length) myPick = forced[0].seat;
+    }
+    picks.push({ from: me.seat, to: myPick });
+  }
 
 
   picks.forEach(v => {
