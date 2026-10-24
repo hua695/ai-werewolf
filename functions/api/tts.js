@@ -36,12 +36,35 @@ function xmlEscape(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* ── 参数白名单 ────────────────────────────────────────────────
+   voice / rate / pitch 会被拼进 SSML 的属性里。以前这三个参数
+   一个都没校验也没转义，等于开放 XML 注入：
+     ?voice=x"><injected>evil</injected><voice name="y
+   能注入兄弟元素、改音色、换语言，甚至塞进 <audio src="..."> 让微软
+   服务器去取攻击者的地址（盲 SSRF）。
+
+   白名单是最强的防线——只认这九个音色和合法的百分比/赫兹范围，
+   注入 payload 根本进不来。转义只是第二道保险。 */
+const ALLOWED_VOICES = new Set([
+  'zh-CN-XiaoxiaoNeural', 'zh-CN-XiaoyiNeural', 'zh-CN-YunjianNeural',
+  'zh-CN-YunxiNeural', 'zh-CN-YunyangNeural', 'zh-CN-XiaochenNeural',
+  'zh-CN-XiaomengNeural', 'zh-CN-XiaomoNeural', 'zh-CN-XiaoruiNeural',
+  'zh-CN-XiaoshuangNeural', 'zh-CN-XiaoxuanNeural', 'zh-CN-XiaoyanNeural',
+  'zh-CN-XiaoyuanNeural', 'zh-CN-XiaozhenNeural',
+]);
+const RATE_RE = /^[+-]?\d{1,3}%$/;
+const PITCH_RE = /^[+-]?\d{1,3}Hz$/;
+
 function buildSsml(text, voice, rate, pitch) {
+  /* 三个属性值一律过 xmlEscape，text 同样。双保险。 */
+  const v = xmlEscape(voice);
+  const r = xmlEscape(rate);
+  const p = xmlEscape(pitch);
   const inner = (rate || pitch)
-    ? '<prosody rate="' + (rate || '0%') + '" pitch="' + (pitch || '0Hz') + '">' + xmlEscape(text) + '</prosody>'
+    ? '<prosody rate="' + (r || '0%') + '" pitch="' + (p || '0Hz') + '">' + xmlEscape(text) + '</prosody>'
     : xmlEscape(text);
   return '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="zh-CN">' +
-    '<voice name="' + voice + '">' + inner + '</voice></speak>';
+    '<voice name="' + v + '">' + inner + '</voice></speak>';
 }
 
 export async function onRequestOptions() {
@@ -57,6 +80,23 @@ export async function onRequestGet(context) {
   const voice = u.searchParams.get('voice') || 'zh-CN-XiaoxiaoNeural';
   const rate = u.searchParams.get('rate') || '0%';
   const pitch = u.searchParams.get('pitch') || '0Hz';
+
+  /* 参数白名单：不合规直接拒，别把畸形 SSML 发给微软再等它报错 */
+  if (!ALLOWED_VOICES.has(voice)) {
+    return new Response('invalid voice', { status: 400, headers: CORS });
+  }
+  if (!RATE_RE.test(rate)) {
+    return new Response('invalid rate', { status: 400, headers: CORS });
+  }
+  if (!PITCH_RE.test(pitch)) {
+    return new Response('invalid pitch', { status: 400, headers: CORS });
+  }
+  /* rate / pitch 的数值范围也要卡，超出微软可接受范围的会被它静默忽略 */
+  const rateNum = parseInt(rate, 10);
+  const pitchNum = parseInt(pitch, 10);
+  if (Math.abs(rateNum) > 100 || Math.abs(pitchNum) > 100) {
+    return new Response('rate/pitch out of range', { status: 400, headers: CORS });
+  }
 
   try {
     const gec = await secMsGec();
@@ -81,9 +121,16 @@ export async function onRequestGet(context) {
 
     const ws = res.webSocket;
     if (!ws) {
-      return new Response('ws upgrade failed: ' + res.status, { status: 502, headers: CORS });
+      /* 不把上游状态码透出去——它暴露微软的风控策略，也给扫描者区分信号 */
+      console.warn('tts ws upgrade failed: ' + res.status);
+      return new Response('tts unavailable', { status: 502, headers: CORS });
     }
-    ws.accept();
+    try {
+      ws.accept();
+    } catch (e) {
+      try { ws.close(); } catch (e2) {}
+      return new Response('tts unavailable', { status: 502, headers: CORS });
+    }
 
     const chunks = [];
     const finished = new Promise(resolve => {
@@ -126,7 +173,11 @@ export async function onRequestGet(context) {
     try { ws.close(); } catch (e) { /* 忽略 */ }
 
     if (!chunks.length) {
-      return new Response('no audio (' + why + ')', { status: 502, headers: CORS });
+      /* 超时是 504 不是 502——两者对前端的含义不同：
+         502 是上游坏了，504 是上游没在时间内响应。 */
+      const st = why === 'timeout' ? 504 : 502;
+      console.warn('tts no audio: ' + why);
+      return new Response('tts unavailable', { status: st, headers: CORS });
     }
 
     const total = chunks.reduce((n, c) => n + c.length, 0);
@@ -138,11 +189,17 @@ export async function onRequestGet(context) {
       headers: {
         ...CORS,
         'Content-Type': 'audio/mpeg',
-        // 同一句话反复播放走浏览器缓存，省一次往返
-        'Cache-Control': 'public, max-age=86400'
+        /* private 而不是 public：text 是要合成的用户内容（发言、私聊），
+           public 等于授权任何共享缓存（公司代理、公共 WiFi）留存这段音频。
+           private 只允许浏览器自己缓存，语义正好是"同一句话别重复合成"。 */
+        'Cache-Control': 'private, max-age=86400',
+        'X-Content-Type-Options': 'nosniff'
       }
     });
   } catch (e) {
-    return new Response('tts error: ' + (e && e.message), { status: 502, headers: CORS });
+    /* 错误文案不带上游细节（微软的状态码、异常消息）：
+       那是给扫描者的 oracle，也能暴露微软的风控策略。详情只进日志。 */
+    console.error('tts error', String(e && e.message));
+    return new Response('tts unavailable', { status: 502, headers: CORS });
   }
 }
