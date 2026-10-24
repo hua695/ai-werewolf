@@ -3170,8 +3170,8 @@ function looksLikeThinking(text) {
       结果，只会白白多等两轮超时；
    ② 这一家彻底不行，就从模型池里换一家接管这个座位，对局继续往下走。
    ============================================================ */
-const SPEC_SWAP = new WeakMap();   // 座位原本的 spec -> 顶替它的 spec
-const SPEC_DEAD = new Set();       // "provider|model"，本轮已判死，不再尝试
+let SPEC_SWAP = new WeakMap();     // 座位原本的 spec -> 顶替它的 spec（每局重置）
+const SPEC_DEAD = new Set();       // "provider|model"，本局已判死，不再尝试（每局重置）
 const SWAP_SAID = new Set();       // 同一个模型只播报一次，免得九个人各喊一遍
 
 function specKey(s) {
@@ -3209,6 +3209,14 @@ const STREAM_FALLBACK = new Error('STREAM_FALLBACK');
 
 async function attemptStream(sp, base, body, onDelta, runId) {
   const ctrl = new AbortController();
+  /* 超时分两段：
+     ① 建连 + 响应头，用 CFG.timeout（整体请求上限）
+     ② 读流期间用独立的看门狗——某个 provider 发完响应头就再不吐 token，
+        reader.read() 会永远挂着。原来这里拿到 res 就 clearTimeout(timer)，
+        看门狗被撤掉了，于是「点停止也救不回来」：循环顶部的
+        runId !== RUN 检查在 read() 里根本走不到。
+        现在改成：每次 read() 之前重置一个静默计时器，超过 N 秒没数据就 abort，
+        abort 后走 STREAM_FALLBACK 退回非流式重发，绝不半途卡死。 */
   const timer = setTimeout(() => ctrl.abort(), CFG.timeout);
   let res;
   try {
@@ -3237,6 +3245,15 @@ async function attemptStream(sp, base, body, onDelta, runId) {
   let finish = '';
   let reported = 0;   // 已经回调过多少字符，避免每个 chunk 都刷屏
 
+  /* 静默看门狗：流打开后多久没有任何数据就判定为卡死。
+     取 CFG.timeout 的一半，最低 10 秒——正常吐 token 的间隔远小于这个数。 */
+  const SILENCE_MS = Math.max(10000, Math.floor((CFG.timeout || 60) * 1000 * 0.5));
+  let watchdog = null;
+  const armWatchdog = () => {
+    if (watchdog) clearTimeout(watchdog);
+    watchdog = setTimeout(() => ctrl.abort(), SILENCE_MS);
+  };
+
   const push = (force) => {
     if (runId !== RUN) return;
     if (!force && content.length - reported < 12) return;
@@ -3245,9 +3262,11 @@ async function attemptStream(sp, base, body, onDelta, runId) {
   };
 
   try {
+    armWatchdog();
     while (true) {
       if (runId !== RUN) throw new StopGame();
       const { done, value } = await reader.read();
+      armWatchdog();   // 收到数据，重置静默计时
       if (done) break;
       buf += dec.decode(value, { stream: true });
       // SSE 以空行分帧；最后一段可能不完整，留给下一轮
@@ -3275,6 +3294,8 @@ async function attemptStream(sp, base, body, onDelta, runId) {
     try { reader.cancel(); } catch (e2) {}
     if (e instanceof StopGame) throw e;
     throw STREAM_FALLBACK;
+  } finally {
+    if (watchdog) clearTimeout(watchdog);
   }
   push(true);
   if (!content) throw STREAM_FALLBACK;   // 流里没拿到正文，交给非流式重发
@@ -3291,7 +3312,7 @@ function taskTemp(t) {
   return typeof v === 'number' ? v : null;
 }
 
-async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task, onDelta }) {
+async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task, onDelta, probe }) {
   const cfg = CFG;
   const origin = spec || null;
 
@@ -3299,16 +3320,23 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task,
   let lead = origin ? (SPEC_SWAP.get(origin) || origin) : null;
   if (lead && SPEC_DEAD.has(specKey(lead))) lead = null;
   if (!lead) lead = usablePool().find(p => !SPEC_DEAD.has(specKey(p))) || null;
+  // probe 只测指定那一家，不该被上局的替补记录影响
+  if (probe) lead = origin;
 
   // 候选链：原配优先，后面跟池子里其余几家，去重并剔除已判死的，最多试三家
+  // probe 模式（连通性测试）例外：只测指定的那一家，不换人、不动黑名单——
+  // 否则点一下「测试连接」就会把替补模型的行为写进正式对局，
+  // 测试失败的那家还会被拉黑，开局时直接少一家可用。
   const seen = new Set();
-  const chain = [lead].concat(usablePool()).filter(s => {
-    if (!s || !s.model) return false;
-    const k = specKey(s);
-    if (seen.has(k) || SPEC_DEAD.has(k)) return false;
-    seen.add(k);
-    return true;
-  }).slice(0, 3);
+  const chain = probe
+    ? [origin].filter(s => s && s.model)
+    : [lead].concat(usablePool()).filter(s => {
+        if (!s || !s.model) return false;
+        const k = specKey(s);
+        if (seen.has(k) || SPEC_DEAD.has(k)) return false;
+        seen.add(k);
+        return true;
+      }).slice(0, 3);
   if (!chain.length) throw new Error('模型池为空，先填一个模型名');
 
   /* 在一家模型上把一句请求打完：内部仍有三次尝试，
@@ -3474,29 +3502,32 @@ async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task,
     if (runId !== RUN) throw new StopGame();
     if (!sp.key && !cfg.allowNoKey) {
       lastErr = new Error('这一家的 API Key 是空的');
-      SPEC_DEAD.add(specKey(sp));
+      if (!probe) SPEC_DEAD.add(specKey(sp));
       continue;
     }
     const meta = PROVIDERS[sp.provider] || PROVIDERS.custom;
     const base = String(sp.base || meta.base || '').replace(/\/+$/, '');
     if (!base) {
       lastErr = new Error('这一家缺少接口地址');
-      SPEC_DEAD.add(specKey(sp));
+      if (!probe) SPEC_DEAD.add(specKey(sp));
       continue;
     }
 
     let content = '';
     try {
-      noteModelCall(sp);
+      /* 连通性测试不计入模型统计和天梯——那统计的是"这局表现如何"，
+         一次探测请求混进去会污染胜率和划水率。 */
+      if (!probe) noteModelCall(sp);
       content = await attemptOn(sp, base);
     } catch (e) {
       if (e instanceof StopGame) throw e;
       lastErr = e;
-      if (isFatalCallError(e)) SPEC_DEAD.add(specKey(sp));
+      if (isFatalCallError(e) && !probe) SPEC_DEAD.add(specKey(sp));
       continue;
     }
 
-    if (lead && sp !== lead) {
+    /* 记录"谁顶替了谁"。probe 模式只测一家、不换人，别把探测记成换人。 */
+    if (!probe && lead && sp !== lead) {
       if (origin) SPEC_SWAP.set(origin, sp);
       noteSpecSwap(lead, sp);
     }
@@ -3515,7 +3546,17 @@ async function pool(items, limit, fn) {
       while (true) {
         const i = cursor++;
         if (i >= items.length) return;
-        out[i] = await fn(items[i], i);
+        /* 单个任务失败不能让整个池崩掉。原来的写法是 out[i] = await fn(...)，
+           一家模型三次尝试全败就会 reject 整个 Promise.all：
+           夜聊阶段直接抛出去，整夜对局中断——明明别家模型还好着。
+           现在把失败收敛成 null，由调用方决定怎么兜底
+           （各调用点本来就有"某家失灵就当她没用过药"这类降级思路）。 */
+        try {
+          out[i] = await fn(items[i], i);
+        } catch (e) {
+          if (e instanceof StopGame) throw e;   // 停止信号要往外传
+          out[i] = null;
+        }
       }
     })());
   }
@@ -4081,9 +4122,17 @@ function stopAskTimer() {
 }
 
 function cancelAsk() {
-  stopAskTimer();
+  /* 取消提问必须把 Promise 兑现掉。
+     原来这里是 stopAskTimer → ASK=null → hideAsk，把 resolve 引用直接丢了，
+     于是 await askHuman(...) 永远挂起：点「停止」后那个协程死等，
+     startGame 的 finally 永不执行（导出按钮一直灰着），
+     内存和整局状态一起常驻。「再来一局」走 resetUI 也撞同一个坑。
+     现在用 null 兑现，让 await 正常返回，再由调用方的 runId 检查抛 StopGame。 */
+  if (!ASK) { hideAsk(); return; }
+  const r = ASK.resolve;
   ASK = null;
   hideAsk();
+  try { r(null); } catch (e) { /* 忽略：等待方可能已经走了 */ }
 }
 
 function answerAsk(v) {
@@ -4183,6 +4232,11 @@ function askHuman(kind, opts) {
         };
         paint();
         ASK.timer = setInterval(() => {
+          /* 暂停时不该继续倒数。玩家点暂停是为了想清楚，
+             倒计时照走的话归零会自动弃票/不用药——等于暂停了还替你做决定。
+             主流程的 gate / pSleep / 打字机 / 语音等待都判 PAUSED，
+             这里漏了，所以补上：暂停期间跳过本 tick，不减 left。 */
+          if (PAUSED) return;
           left--;
           if (left <= 0) {
             stopAskTimer();
@@ -4522,6 +4576,17 @@ function renderModeUI() {
 }
 
 function setMode(m) {
+  /* 对局进行中不能切模式。原来这里第一行就改 MODE，而 MODE 是全局量，
+     secretsHidden() / isMe() / lockView 全都读它——中途切到观战会立刻
+     解锁上帝视角（夜间明细全部显形），你的座位也不再被当成真人，
+     于是某个随机模型替你的角色发言投票，你的操作被静默吞掉。
+     提示写着「下一局开始生效」，行为却是立即生效，两边对不上。
+     现在直接拦住：想换模式，等这局结束。 */
+  if (S && !S.winner && MODE !== m) {
+    toast('对局进行中不能切换玩法，等这局结束');
+    renderModeUI();
+    return;
+  }
   MODE = m === 'play' ? 'play' : 'watch';
   renderModeUI();
   saveCfg();
@@ -4993,12 +5058,15 @@ function renderTable() {
     if (s.human) cls.push('me');
     const meta = ROLE_META[s.role] || { name: '', color: '#8b93a5' };
     const mine = s.human && MODE === 'play';
+    /* 阵营不能只靠 CSS 藏。data-camp="wolf" 写在座位上就是一个现成的
+       选择器，DevTools 里一眼看出谁是狼——所以身份没公开时不写这个属性。 */
+    const campAttr = (showRole || mine) ? campOf(s.role) : '';
     const roleLine = (showRole || mine) && meta.name
       ? '<div class="rt-role" data-camp="' + campOf(s.role) + '" style="color:' + meta.color + '">' +
           '<i class="rt-camp-dot"></i>' + meta.name + '</div>'
       : '';
     html += '<div class="' + cls.join(' ') + '" data-seat="' + s.seat + '" data-rt="' + s.seat + '"' +
-      ' data-camp="' + campOf(s.role) + '"' +
+      (campAttr ? ' data-camp="' + campAttr + '"' : '') +
       ' style="left:' + x.toFixed(2) + '%;top:' + y.toFixed(2) + '%">' +
       '<div class="rt-ava">' + avatarSVG(s.avatar, 54) +
         '<span class="rt-no">' + s.seat + '</span></div>' +
@@ -5367,6 +5435,11 @@ function msgEvent(icon, text, cls) {
 
 function godMsg(text, icon) {
   if (!CFG.godLog) return;
+  /* 夜间明细（狼队定刀、验人结果、女巫用药、狼队夜聊）以前只靠 CSS
+     display:none 遮住，文本其实一直躺在 DOM 里——DevTools 或者一句
+     document.querySelectorAll('.god') 就能全读出来。
+     参与模式玩家还活着的时候，这些内容根本不该进 DOM。 */
+  if (secretsHidden()) return;
   msgEvent(icon || '·', text, 'god');
 }
 
@@ -6513,9 +6586,16 @@ function collectSeats() {
 /* ============================================================
    对局初始化
    ============================================================ */
+/* 洗一套身份牌，按座位顺序分配。
+   initGame 用它开局发牌；脱敏存档恢复时也用它——参与模式存的快照
+   不带身份，恢复后必须重新发，否则整局都是空身份。 */
+function dealRoles(n) {
+  return shuffle(BOARDS[n].slice());
+}
+
 function initGame(seats, specs) {
-  const roles = shuffle(BOARDS[seats.length].slice());
   const ME_AVATAR = { shape: 'circle', bg: '#3a2f22', fg: '#f8eedd', accent: '#a8843c', glyph: '你' };
+  const roles = dealRoles(seats.length);
   S = {
     seats: seats.map((s, i) => {
       const mine = MODE === 'play' && s.seat === HUMAN;
@@ -6560,6 +6640,18 @@ function initGame(seats, specs) {
   /* 新局重置按模型的统计。座位与身份（狼/好人）在这里记下，
      胜负在 finishGame 里按 winner 累加。 */
   SPEC_STATS.clear();
+  /* 这几个是「本局内」的跨局状态，开局必须清干净。
+     SPEC_DEAD 尤其关键：某家的 Key 过期返回 401 就被标死，
+     而它原本只在注释里写着「本轮」，实际全文件没有一处 clear()——
+     于是玩家改好 Key 开第二局，那个模型仍在黑名单里被踢出候选链，
+     永久不可用直到刷新页面。池子全死时还会报「模型池为空，先填一个模型名」，
+     误导得玩家反复检查设置也永远修不好。
+     SPEC_SWAP 是 WeakMap 键在全局 POOL 的对象上，跨局还是同一个对象，
+     不清的话第二局会静默用替补模型顶替座位，且不再播报这件事。
+     SWAP_SAID 不清的话「本局由 X 替它坐这个位置」这句话一局只说一次。 */
+  SPEC_DEAD.clear();
+  SPEC_SWAP = new WeakMap();
+  SWAP_SAID.clear();
   S.seats.forEach(sp => {
     if (!sp || !sp.spec || !sp.spec.model) return;
     const st = specStat(sp.spec);
@@ -6721,7 +6813,9 @@ async function nightPhase(id) {
       });
       return { seat: w.seat, ans };
     });
-    const genBySeat = new Map(generated.map(g => [g.seat, g]));
+    /* pool 现在把失败收敛成 null，映射前先滤掉，否则 g.seat 会抛。
+       某家狼夜聊失败只是它这一轮不说话，不影响其余狼。 */
+    const genBySeat = new Map(generated.filter(g => g && g.ans).map(g => [g.seat, g]));
 
     for (const w of wolvesAlive) {
       await gate(id);
@@ -7890,17 +7984,42 @@ function saveSnap() {
   try {
     /* 快照会被整包写进 localStorage，绝不能带 API Key。
        座位的 spec 只需要记住"这家/这个模型"，恢复时 resumeGame 会用
-       当前的模型池重新分配（assignSpecs），本来也不依赖快照里的 Key。 */
+       当前的模型池重新分配（assignSpecs），本来也不依赖快照里的 Key。
+
+       参与模式还要再脱一层：真人还活着的时候，localStorage 里不能躺着
+       完整身份、模型心声、预言家验人记录。前面这些在 UI 上都挡住了，
+       但 DevTools → Application → Local Storage 一打开就全看见了，
+       「出局前看不到底牌」这个承诺在存储层直接失效。
+       所以这里只写公开态（role 置空、心声/验人/记忆不写、发言去掉 whisper），
+       并用 masked 标记告诉 resumeGame：这份快照是脱敏的，别试图还原。 */
+    const masked = MODE === 'play' && humanAlive();
     const seats = S.seats.map(s => {
-      if (!s || !s.spec) return s;
-      return Object.assign({}, s, {
-        spec: { provider: s.spec.provider, model: s.spec.model }
+      if (!s) return s;
+      const base = s.spec
+        ? Object.assign({}, s, { spec: { provider: s.spec.provider, model: s.spec.model } })
+        : Object.assign({}, s);
+      if (!masked) return base;
+      return Object.assign({}, base, {
+        role: '',                       // 真实身份不落盘
+        whispers: [],                   // 模型心声不落盘
+        seerLog: [],                    // 预言家验人记录不落盘
+        mem: []                         // 私有记忆不落盘
       });
     });
+    let log = S.log;
+    if (masked) {
+      log = S.log.map(l => {
+        if (l.kind !== 'speech') return l;
+        const c = Object.assign({}, l);
+        delete c.whisper;               // 每条发言附带的私下心声
+        return c;
+      });
+    }
     localStorage.setItem(SNAP_KEY, JSON.stringify({
       v: 2, at: Date.now(),
       mode: MODE, human: HUMAN, diff: DIFF,
-      S: Object.assign({}, S, { seats })
+      masked: masked,                   // 恢复时据此知道身份信息已被抹掉
+      S: Object.assign({}, S, { seats, log })
     }));
   } catch (e) { console.warn('快照写入失败', e); }
 }
@@ -7998,6 +8117,14 @@ async function resumeGame(snap) {
   /* 存档里记的是当时那台机器的模型分配。池子换过就按当前的重新摊一遍，
      否则续跑会打到已经删掉的模型上。 */
   S.seats.forEach((s, i) => { if (!s.human) s.spec = (specs && specs[i]) || s.spec; });
+  /* 脱敏快照（参与模式存的）没有身份信息，直接恢复会得到一堆空身份。
+     这时候必须重新发牌——但不能让玩家自己重开一局，所以这里静默重发，
+     并把提示说清楚，别让人以为存档坏了。 */
+  if (snap.masked) {
+    const fresh = dealRoles(n);
+    S.seats.forEach((s, i) => { s.role = fresh[i]; });
+    msgSys('存档出于保密只保留了公开信息，身份已重新发放。');
+  }
   NOTES = {};
   /* 押注是当场下注当场结算的，跨进程没有意义，注池重置 */
   BET.chips = 100; BET.round = null; BET.final = null; BET.log = [];
@@ -8186,6 +8313,11 @@ async function startGame() {
 /* 身份总览：一眼看清全场身份与阵营，不用翻记录 */
 function openRolesPanel() {
   if (!S) { toast('开局后才能看身份表'); return; }
+  /* 参与模式：真人还活着的时候，身份表等于直接公布底牌。
+     这个按钮在顶栏，游戏中一直可点，不设门禁就等于没有信息隔离。
+     出局后才解锁——和「出局后才解锁档案卡」是同一个规则。 */
+  const hide = secretsHidden();
+  if (hide) { toast('出局后才能看身份表'); return; }
   const camping = { wolf: '狼人', god: '神职', villager: '平民' };
   const body = $('modalBody');
   body.innerHTML =
@@ -8796,7 +8928,10 @@ function buildMarkdown() {
   lines.push('');
   lines.push('- 人数：' + S.seats.length);
   lines.push('- 天数：' + S.round);
-  lines.push('- 结局：' + (S.winner === 'good' ? '好人阵营胜利' : '狼人阵营胜利'));
+  /* S.winner 在对局中途是 null，原写法会落到 else 分支，把「狼人阵营胜利」
+     当成既成事实写进文件。中局导出要说清楚是未完局。 */
+  lines.push('- 结局：' + (S.winner === 'good' ? '好人阵营胜利'
+    : S.winner === 'wolf' ? '狼人阵营胜利' : '未完局'));
   lines.push('- Token：' + (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString());
   lines.push('');
   lines.push('## 座位与身份');
@@ -8828,6 +8963,10 @@ function buildMarkdown() {
 
 function exportLog() {
   if (!S) return;
+  /* 顶栏的 exportBtn 在对局中会被禁用，但右侧面板里的 exportBtn2 从来没被禁用过，
+     于是参与模式可以从「对局数据 → 导出日志」直接拿到一份含全部身份的 md。
+     这里补上门禁，跟身份表用同一条规则。 */
+  if (secretsHidden()) { toast('出局后才能导出完整对局数据'); return; }
   const md = buildMarkdown();
   const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
   const a = document.createElement('a');
@@ -8911,7 +9050,8 @@ async function testAll() {
         runId: RUN,
         maxTokens: 200,
         spec: p,
-        temp: taskTemp('probe')
+        temp: taskTemp('probe'),
+        probe: true          // 只测这一家：不换替补、不拉黑、不计统计
       });
       setSt('ok', '✓ 可用 · ' + clip(reply.replace(/\s+/g, ''), 18));
       ok++;
@@ -8971,6 +9111,12 @@ function resetUI() {
   clearSnap();
   S = null;
   NOTES = {};
+  /* 本局内的跨局状态一并清掉。initGame 也会清一次，
+     但「再来一局」和「返回首页」走的是 resetUI 这条路，
+     只在 initGame 清的话这里会漏。 */
+  SPEC_DEAD.clear();
+  SPEC_SWAP = new WeakMap();
+  SWAP_SAID.clear();
   lockView(false);
   feedEl().innerHTML = '';
   showHero();
