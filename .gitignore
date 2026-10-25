@@ -9,3 +9,7 @@ Thumbs.db
 
 # 本地评测稿，不部署
 玩家视角优化建议.md
+
+# 背景图生成中间产物与历史备份（不入仓库，避免部署时白传 11MB）
+assets/bg/_new/
+assets/bg/_old_*/
