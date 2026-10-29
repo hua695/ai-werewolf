@@ -74,6 +74,11 @@
   --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
   --mono:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
   --ease:cubic-bezier(.2,.8,.2,1);
+  /* 入场专用：起步快、收尾轻。cubic-bezier(.16,1,.3,1) 前段斜率很大，
+     0.2 的时间就跑到约 60% 距离，后 80% 时间只挪剩下的 40%，
+     所以看起来是"弹进来然后轻轻落定"，而不是匀速平移的机械感。
+     出场仍用 --ease（对称曲线），退场要稳，不要抢戏。 */
+  --ease-enter:cubic-bezier(.16,1,.3,1);
 }
 
 /* 数字全部等宽，跳动不晃 */
@@ -196,7 +201,25 @@ body.is-day .brand-mark{
 .sep{width:1px;height:13px;background:var(--line);flex-shrink:0}
 .metric{white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:.03em}
 .metric b{color:var(--text-2);font-weight:600}
-.topactions{display:flex;gap:7px;flex-shrink:0}
+.topactions{
+  display:flex;gap:var(--sp-1);flex-shrink:0;align-items:center;
+}
+/* 十个按钮平铺成一排、权重完全一样，找东西全靠逐个读字。
+   按用途切成三组，组间插一道竖线：
+     1 净桌 / 声音 / 快进      —— 看牌时的工具
+     2 笔记 / 身份表 / 天梯    —— 查阅类
+     3 视角 / 暂停 / 停止 / 导出 —— 对局控制
+   不挪 DOM 顺序（有几处 JS 按顺序取元素），只用伪元素画分隔。 */
+.topactions > .sound-wrap::before,
+.topactions > #noteBtn::before,
+.topactions > #viewBtn::before{
+  content:'';display:inline-block;width:1px;height:16px;
+  margin:0 var(--sp-2) 0 var(--sp-1);
+  background:linear-gradient(180deg,transparent,rgba(217,169,75,.22) 30%,
+             rgba(217,169,75,.22) 70%,transparent);
+  vertical-align:middle;
+}
+.topactions > .sound-wrap{display:flex;align-items:center}
 .icon-btn{
   padding:6px 12px;border-radius:var(--r-sm);border:1px solid var(--line);background:transparent;
   color:var(--text-3);font-size:12.5px;font-weight:500;cursor:pointer;
@@ -205,19 +228,65 @@ body.is-day .brand-mark{
 .icon-btn:hover:not(:disabled){color:var(--text);border-color:#3a4459;background:var(--ink-600)}
 .icon-btn:active:not(:disabled){transform:scale(.96)}
 .icon-btn:disabled{opacity:.28;cursor:not-allowed}
-.icon-btn.on{color:var(--gold);border-color:rgba(217,169,75,.3);background:var(--gold-dim)}
+.icon-btn.on{
+  /* 顶栏里 .on 是"这个开关开着"，不是"这是主操作"。
+     原来给了金色底填充，和右栏那颗鎏金「开始对局」撞权重，
+     一眼看过去分不清哪个才是该点的。改成只提亮文字与描边，
+     底色几乎不动——状态可辨，但不抢主按钮。 */
+  color:var(--gold);
+  border-color:rgba(217,169,75,.34);
+  background:rgba(217,169,75,.06);
+}
 #soundBtn{width:34px;padding:6px 0;text-align:center;font-size:13px}
 
 /* 声音设置下拉菜单 */
 .sound-wrap{position:relative}
+/* ══════ 图标交叉淡化 ══════
+   图标从 🔊 换到 🔇 时，原来是一句 textContent = '🔇'，字直接替换，
+   中间没有任何过渡，看着很硬。而且 emoji 字形不同，硬切会跳一下。
+   做法：拆成两层的叠放容器——两个图标都常驻 DOM，靠 opacity 交叉，
+   失败的那个同时轻微缩小 + 失焦，成功的那个从缩小状态回到原尺寸。
+   因为全是 transition，任意时刻打断都能就地从当前位置折返。 */
+.icon-swap{
+  position:relative;display:inline-grid;place-items:center;
+  width:1em;height:1em;line-height:1;vertical-align:-.125em;
+}
+.icon-swap > i{
+  position:absolute;inset:0;display:grid;place-items:center;
+  font-style:normal;line-height:1;
+  transition:opacity .2s var(--ease-enter),
+             transform .2s var(--ease-enter),
+             filter .2s var(--ease-enter);
+}
+.icon-swap > i[data-off]{
+  opacity:0;transform:scale(.82);filter:blur(1.5px);
+}
+.icon-swap > i[data-off].on{
+  opacity:1;transform:none;filter:blur(0);
+}
 .sound-menu{
   position:absolute;top:calc(100% + 6px);right:0;z-index:100;
-  min-width:200px;padding:10px 12px;border-radius:10px;
+  min-width:200px;padding:10px 12px;border-radius:var(--r-card);
   background:rgba(15,19,28,.98);border:1px solid rgba(217,169,75,.25);
   box-shadow:0 12px 40px rgba(0,0,0,.6);backdrop-filter:blur(12px);
-  animation:menuIn .18s var(--ease);
+  /* 原来用 animation:menuIn 从 translateY(-6px) 淡入。关键帧动画的毛病是
+     不能被中途打断：菜单刚出来还没落定就再点一次收起，动画会继续把
+     "出现"播完，看着像点了没反应，要等它播完才响应。
+     改成 transition 后，任何时刻改 opacity/transform 都会从当前位置
+     继续往目标走，就地转向，不会从头重来。
+     用 --ease-enter 是因为这是入场方向：起步快、收尾轻。 */
+  opacity:0;transform:translateY(-6px) scale(.98);
+  visibility:hidden;
+  transition:opacity .18s var(--ease-enter),
+             transform .18s var(--ease-enter),
+             visibility 0s linear .18s;
 }
-@keyframes menuIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.sound-menu.show{
+  opacity:1;transform:none;visibility:visible;
+  transition:opacity .18s var(--ease-enter),
+             transform .18s var(--ease-enter),
+             visibility 0s;
+}
 .sm-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0}
 .sm-item + .sm-item{border-top:1px solid rgba(255,255,255,.06)}
 .sm-label{font-size:12.5px;color:var(--text-2)}
@@ -241,7 +310,10 @@ body.is-day .brand-mark{
 .slider::before{
   content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;
   background:white;border-radius:50%;
-  transition:transform .2s cubic-bezier(.34,1.56,.64,1),background-color .2s ease-out;
+  /* 开关滑块原来用 cubic-bezier(.34,1.56,.64,1)：y 值 1.56 是过冲回弹，
+     滑到位会先冲出去再弹回来，跟整套"起步快、收尾轻"的调性打架。
+     统一到入场曲线，滑动是干脆地落定。 */
+  transition:transform .2s var(--ease-enter),background-color .2s var(--ease);
 }
 .switch input:checked + .slider{background:rgba(217,169,75,.5)}
 .switch input:checked + .slider::before{transform:translateX(16px)}
@@ -587,7 +659,7 @@ body.end-good .stage-bg .shade::after{opacity:0}
   position:absolute;left:0;right:0;top:24%;z-index:6;
   display:flex;justify-content:center;pointer-events:none;
   opacity:0;transform:translateY(10px);
-  animation:ebIn .9s .2s var(--ease) forwards;
+  animation:ebIn .9s .2s var(--ease-enter) forwards;
 }
 @keyframes ebIn{to{opacity:1;transform:none}}
 .end-banner .eb-inner{
@@ -785,7 +857,7 @@ body.is-day.home .hero-arrow span{color:#d9a94a}
 .feed-inner{max-width:740px;margin:0 auto;width:100%;min-width:0}
 
 /* ══════════ 消息 ══════════ */
-.msg{margin-bottom:15px;animation:rise .32s var(--ease)}
+.msg{margin-bottom:15px;animation:rise .32s var(--ease-enter)}
 @keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 
 /* 当前发言者高亮 */
@@ -890,7 +962,7 @@ body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
   padding:13px 16px;position:relative;
   box-shadow:0 4px 16px rgba(0,0,0,.2);
   transition:border-color .3s var(--ease),border-left-color .3s var(--ease),box-shadow .3s var(--ease);
-  animation:msgIn .35s var(--ease);
+  animation:msgIn .35s var(--ease-enter);
 }
 @keyframes msgIn{from{opacity:0;transform:translateY(10px);filter:blur(3px)}to{opacity:1;transform:none;filter:blur(0)}}
 .msg.speech:hover{border-color:#2b3446;border-left-color:#39445a}
@@ -988,7 +1060,7 @@ body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
 .msg.banner::after{bottom:0}
 .msg.banner .b-title{
   font-family:var(--serif);font-size:32px;font-weight:600;letter-spacing:.3em;text-indent:.3em;
-  animation:glowIn .9s var(--ease) both;
+  animation:glowIn .9s var(--ease-enter) both;
 }
 .msg.banner .b-sub{font-size:11.5px;color:var(--text-3);margin-top:14px;letter-spacing:.14em}
 .msg.banner.good{
@@ -1015,7 +1087,7 @@ body.player-view .msg.speech{border-left-color:var(--line)!important}
 body.player-view .msg.speech.wolf .s-name{color:inherit}
 
 /* ══════════ 开场 ══════════ */
-.hero{padding:54px 18px 34px;text-align:center;animation:fadeUp .8s var(--ease) both;position:relative;isolation:isolate}
+.hero{padding:54px 18px 34px;text-align:center;animation:fadeUp .8s var(--ease-enter) both;position:relative;isolation:isolate}
 /* 标题压在被照亮的位置上，垫一层柔光保证读得清 */
 .hero::before{
   content:'';position:absolute;left:50%;top:0;transform:translateX(-50%);
@@ -1041,15 +1113,26 @@ body.player-view .msg.speech.wolf .s-name{color:inherit}
 /* 标题下坠一枚金色菱形，字距拉开成一条装饰线。
    仪式感这一下很便宜：一个字符，不加 DOM 不加图。 */
 .hero h1::after{
-  content:'◆';display:block;margin-top:14px;
-  font-size:9px;letter-spacing:1.4em;text-indent:1.4em;
-  color:rgba(217,169,75,.85);
-  text-shadow:0 0 12px rgba(217,169,75,.5);
+  /* 原来用一个 ◆ 配 letter-spacing:1.4em 拉开当分隔线。
+     单个字符加了巨大字距后右侧多出一大块不可见空白，
+     text-indent 补偿也对不齐，屏幕上就是一道歪的短横杠，
+     既不像装饰也不像分隔线，看着像渲染错误。
+     改成真正的细线 + 中心菱形：两层背景，一条渐隐金线
+     叠一颗 6px 旋转 45° 的方块，尺寸和位置都由这一处控制。 */
+  content:'';
+  display:block;margin:18px auto 0;
+  width:132px;height:7px;
+  background:
+    linear-gradient(135deg,#f0d49a,#b0821f) center/7px 7px no-repeat,
+    linear-gradient(90deg,
+      transparent,rgba(217,169,75,.55) 18%,rgba(240,214,150,.9) 50%,
+      rgba(217,169,75,.55) 82%,transparent) center/100% 1.5px no-repeat;
+  filter:drop-shadow(0 0 8px rgba(217,169,75,.55));
 }
-/* 暖白底上浅金压不住，换成深金压底、亮金提亮，两端各留一点金属厚度 */
+
+/* 线不再含文字，白天把金色压深避免在灰底上发灰 */
 body.is-day .hero h1::after{
-  color:#d9a94a;
-  text-shadow:0 1px 0 rgba(6,9,14,.7),0 0 10px rgba(201,169,75,.35);
+  filter:drop-shadow(0 0 6px rgba(168,120,31,.3));
 }
 .hero p{
   color:#a4aec1;font-size:13px;margin-top:16px;letter-spacing:.05em;line-height:2;
@@ -1063,14 +1146,32 @@ body.is-day .hero h1::after{
   background:rgba(10,13,19,.35);backdrop-filter:blur(2px);
 }
 .hero-arrow{
-  margin-top:40px;font-size:12px;color:#c3cbdb;letter-spacing:.1em;
-  text-shadow:0 1px 12px rgba(6,9,14,.9);
+  /* 这是整页唯一的行动指引，原来只是一行浅灰小字，落在暗背景上
+     几乎读不到，也完全不像"下一步该干什么"。做成半透明胶囊：
+     有边界、有内边距、有呼吸光晕，视线扫过能落到它上面。 */
+  display:inline-flex;align-items:center;gap:var(--sp-2);
+  margin-top:38px;padding:var(--sp-2) var(--sp-4);
+  font-size:12px;color:#cfd6e2;letter-spacing:.08em;
+  border-radius:999px;
+  background:rgba(12,16,24,.55);
+  border:1px solid rgba(217,169,75,.22);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  text-shadow:0 1px 10px rgba(6,9,14,.8);
+  box-shadow:0 6px 24px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.04);
 }
 .hero-arrow span{
   display:inline-block;color:var(--gold);font-size:14px;
-  animation:nudge 2.4s ease-in-out infinite;
+  /* 箭头用 transition 做往返呼吸，不做无限 keyframes。
+     这样可以随时被打断（例如 hover 或切换到对局），不会卡在动画中途。 */
+  transition:transform 1.2s var(--ease),opacity 1.2s var(--ease);
+  animation:none;
 }
-@keyframes nudge{0%,100%{transform:translateX(0);opacity:.5}50%{transform:translateX(5px);opacity:1}}
+/* 用 hover 触发，代替原来那个永不停的 nudge。
+   这里是 div 不是可聚焦控件，写 :focus-visible 不会命中。 */
+.hero-arrow:hover span{transform:translateX(5px);opacity:1}
+body.is-day .hero-arrow{
+  background:rgba(18,22,30,.7);border-color:rgba(201,169,75,.3);color:#d8dee8;
+}
 
 /* ══════════ 幕布 ══════════ */
 .curtain{
@@ -1140,13 +1241,18 @@ body.is-day .hero h1::after{
 .grp>summary{
   /* 44px 高是触控可点下限，整行都是点击区 */
   min-height:44px;
-  padding:var(--sp-3);font-size:var(--f-ctl);font-weight:600;color:var(--text-2);cursor:pointer;
+  padding:var(--sp-3);font-size:var(--f-ctl);font-weight:700;color:var(--text);cursor:pointer;
   list-style:none;display:flex;align-items:center;gap:var(--sp-2);user-select:none;
-  transition:.16s;letter-spacing:.03em;
-  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+  transition:background-color .16s var(--ease);letter-spacing:.06em;
+  /* 标题原来带一道从白到透明的渐变底，跟里面的卡片底（同一种浅白渐变）
+     几乎一样重，于是"组"和"组里的卡片"分不出层级。
+     改成完全无底：靠字重(700)、字色(--text 而非 --text-2)、
+     字距(0.06em)和上方留白来立标题，容器边界交给外框。
+     展开时才补一道极淡的分隔线，收起时不需要。 */
+  background:transparent;
   border-bottom:1px solid transparent;
 }
-.grp[open]>summary{border-bottom-color:var(--line-soft)}
+.grp[open]>summary{border-bottom-color:var(--line-soft);background:rgba(255,255,255,.018)}
 .grp>summary::-webkit-details-marker{display:none}
 .grp>summary::before{
   /* 三角整体比 12px 字高略小一圈，视觉上才「配」得上文字 */
@@ -1155,7 +1261,7 @@ body.is-day .hero h1::after{
   transition:transform .2s var(--ease);flex-shrink:0;margin-right:1px;
 }
 .grp[open]>summary::before{transform:rotate(90deg)}
-.grp>summary:hover{background:var(--ink-600)}
+.grp>summary:hover{background:rgba(255,255,255,.05)}
 .grp-body{padding:var(--sp-3) var(--sp-3) var(--sp-4)}
 .field{margin-bottom:var(--sp-3)}
 .field:last-child{margin-bottom:0}
@@ -1264,16 +1370,29 @@ body.is-day .btn.primary:hover:not(:disabled){
 /* ══════════ 弹层 ══════════ */
 .modal{
   position:fixed;inset:0;background:rgba(3,5,8,.8);backdrop-filter:blur(8px);
-  display:none;align-items:center;justify-content:center;padding:24px;z-index:100;
+  display:flex;align-items:center;justify-content:center;padding:24px;z-index:100;
+  /* 原来靠 display:none / flex 切换 + keyframes 播入场。
+     display 是瞬时开关，改的一瞬间元素直接出现，transition 完全没机会跑；
+     关的时候也是硬消失，没有任何退场。改成常驻 display:flex，
+     用 opacity + visibility 控制显隐，两个方向都能过渡，也能中途打断。 */
+  opacity:0;visibility:hidden;
+  transition:opacity .22s var(--ease),visibility 0s linear .22s;
 }
-.modal.show{display:flex;animation:fadeIn .2s}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal.show{opacity:1;visibility:visible;transition:opacity .22s var(--ease-enter),visibility 0s}
 .modal-card{
   background:var(--ink-800);border:1px solid var(--line);border-radius:var(--r-lg);
   max-width:840px;width:100%;max-height:86vh;display:flex;flex-direction:column;
-  box-shadow:var(--sh-2);animation:modalIn .3s var(--ease);
+  box-shadow:var(--sh-2);
+  /* 入场：从略小略下浮上来。退场不飞出屏幕，只退回约 70% 的距离
+     （8px 的 70% 约 5.6px）并淡出、轻微失焦，像纸片轻轻放回去。
+     退场曲线用 --ease，比入场那条更平缓，不抢镜。 */
+  opacity:0;transform:scale(.97) translateY(8px);filter:blur(2px);
+  transition:opacity .2s var(--ease),transform .2s var(--ease),filter .2s var(--ease);
 }
-@keyframes modalIn{from{opacity:0;transform:scale(.97) translateY(8px)}to{opacity:1;transform:none}}
+.modal.show .modal-card{
+  opacity:1;transform:none;filter:blur(0);
+  transition:opacity .3s var(--ease-enter),transform .3s var(--ease-enter),filter .3s var(--ease-enter);
+}
 .modal-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
 .modal-head h3{font-family:var(--serif);font-size:15px;font-weight:600;flex:1;letter-spacing:.12em}
 .modal-body{padding:20px;overflow-y:auto}
@@ -1337,13 +1456,22 @@ body.is-day .btn.primary:hover:not(:disabled){
 
 /* ══════════ 存档恢复条 ══════════ */
 .resume-bar{
-  position:fixed;left:50%;transform:translate(-50%,-14px);top:64px;
+  position:fixed;left:50%;transform:translate(-50%,-10px) scale(.98);top:64px;
   display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;
   background:#1a2130;border:1px solid #2c3648;border-radius:var(--r-sm);
   box-shadow:var(--sh-1);z-index:210;opacity:0;pointer-events:none;
-  transition:.28s var(--ease);font-size:12.4px;color:var(--text);
+  /* 退场不飞出屏幕：只退到入场位移的约 70%（14px → 10px），
+     同时淡出并轻微失焦，像纸条被轻轻收走。 */
+  filter:blur(2px);
+  transition:opacity .2s var(--ease),transform .2s var(--ease),
+             filter .2s var(--ease);font-size:12.4px;color:var(--text);
 }
-.resume-bar.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.resume-bar.show{
+  opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto;filter:blur(0);
+  transition:opacity .28s var(--ease-enter),transform .28s var(--ease-enter),
+             filter .28s var(--ease-enter);
+}
+.resume-bar.out{opacity:0;transform:translate(-50%,-10px) scale(.98);filter:blur(2px)}
 .resume-bar .rb-text{letter-spacing:.02em;line-height:1.5}
 .resume-bar .rb-text i{font-style:normal;color:var(--gold,#d9a94b);font-variant-numeric:tabular-nums}
 .resume-bar button{
@@ -1394,10 +1522,18 @@ body.is-day .btn.primary:hover:not(:disabled){
 .bet-toggle b{color:var(--gold);font-variant-numeric:tabular-nums;font-size:12.5px}
 .bet-toggle .bt-ico{font-size:13px}
 .bet-panel{
-  display:none;width:252px;background:rgba(16,20,29,.97);border:1px solid var(--line);
-  border-radius:12px;padding:13px;box-shadow:var(--sh-1);backdrop-filter:blur(10px);
+  width:252px;background:rgba(16,20,29,.97);border:1px solid var(--line);
+  border-radius:var(--r-grp);padding:13px;box-shadow:var(--sh-1);backdrop-filter:blur(10px);
+  /* display:none/block + keyframes 的老写法：改 display 的那一帧过渡被跳过，
+     所以入场是硬弹出来的。改成 opacity/transform + visibility，
+     两个方向都能过渡，连点也能就地折返。 */
+  opacity:0;transform:translateY(8px) scale(.98);visibility:hidden;
+  transition:opacity .2s var(--ease),transform .2s var(--ease),visibility 0s linear .2s;
 }
-.bet-panel.show{display:block;animation:rise .22s var(--ease)}
+.bet-panel.show{
+  opacity:1;transform:none;visibility:visible;
+  transition:opacity .22s var(--ease-enter),transform .22s var(--ease-enter),visibility 0s;
+}
 .bet-title{
   font-size:10px;letter-spacing:.2em;color:var(--text-3);margin-bottom:8px;font-weight:700;
 }
@@ -1472,13 +1608,21 @@ body.is-day .btn.primary:hover:not(:disabled){
    现在头部是厂商，中间是模型名和密钥，底部永远有一个「去哪拿 Key」的直链，
    整张卡片有底色有边界，填到哪一步一目了然。 */
 .pool-row{
-  /* 卡片之间 8、卡片内部 12：同组卡片比组间紧一档 */
+  /* 卡片之间 8、卡片内部 12：同组卡片比组间紧一档。
+     底色原来只有 4.5% 的白，跟组容器（--ink-700）几乎同色，
+     卡片边界全靠那圈 1px 边撑着，看着发飘。
+     提到 7% 并加一道内高光，卡片才有"浮在组上"的实体感。 */
   padding:var(--sp-3);margin-bottom:var(--sp-2);
-  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
-  border:1px solid var(--line);border-radius:var(--r-card);
-  transition:border-color .18s,background .18s;
+  background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.025));
+  border:1px solid rgba(255,255,255,.09);border-radius:var(--r-card);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 1px 2px rgba(0,0,0,.25);
+  transition:border-color .18s,background .18s,box-shadow .18s;
 }
-.pool-row:hover{border-color:#33405a;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
+.pool-row:hover{
+  border-color:rgba(217,169,75,.28);
+  background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,.04));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 2px 8px rgba(0,0,0,.3);
+}
 .pool-row:last-child{margin-bottom:0}
 .pool-top{display:flex;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-3)}
 .pool-top .sel{flex:1 1 auto;min-width:0;font-weight:600}
@@ -1589,9 +1733,21 @@ body.is-day .btn.primary:hover:not(:disabled){
 /* ══════════ 轮到你 ══════════ */
 .ask{
   position:absolute;left:0;right:0;bottom:44px;z-index:20;padding:0 14px 12px;
-  animation:askIn .24s var(--ease);
+  /* 原来 display 硬切 + 关键帧播入场，关掉时啪一下消失。
+     改成常驻 + class 控制：入场从下方 14px 浮上来（走 --ease-enter 起步快收尾轻），
+     退场只退回 70% 的距离（约 10px）并淡出、轻微失焦，
+     不是一路飞出屏幕——轻轻收回去更自然。 */
+  opacity:0;transform:translateY(14px);filter:blur(2px);
+  pointer-events:none;visibility:hidden;
+  transition:opacity .18s var(--ease),transform .18s var(--ease),
+             filter .18s var(--ease),visibility 0s linear .18s;
 }
-@keyframes askIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ask.show{
+  opacity:1;transform:none;filter:blur(0);
+  pointer-events:auto;visibility:visible;
+  transition:opacity .26s var(--ease-enter),transform .26s var(--ease-enter),
+             filter .26s var(--ease-enter),visibility 0s;
+}
 .ask.mini .ask-hint,
 .ask.mini .ask-body,
 .ask.mini .ask-foot{display:none}
@@ -1659,7 +1815,7 @@ body.player-view .whisper{display:none!important}
   width:min(430px,100%);padding:22px 20px;border-radius:16px;text-align:center;
   background:linear-gradient(180deg,#151c29,#0d1219);
   border:1px solid rgba(217,169,75,.35);box-shadow:0 24px 70px rgba(0,0,0,.72);
-  animation:dealFlip .6s cubic-bezier(.2,.9,.25,1);
+  animation:dealFlip .6s var(--ease-enter);
   transform-style:preserve-3d;
 }
 @keyframes dealFlip{
@@ -1910,7 +2066,7 @@ body.is-day .rt-seat[data-camp="god"] .rt-role{background:rgba(104,76,20,.85)}
   background:rgba(11,15,22,.94);
   border:1px solid rgba(217,169,75,.34);
   box-shadow:0 14px 46px rgba(0,0,0,.5);
-  animation:rtBubble .3s var(--ease);
+  animation:rtBubble .3s var(--ease-enter);
 }
 @keyframes rtBubble{
   from{opacity:0;transform:translate(calc(-50% + var(--bdx,0px)),calc(-46% + var(--bdy,0px))) scale(.74)}
@@ -2074,11 +2230,17 @@ body.is-day .bet-panel{
   .icon-btn{padding:6px 9px;font-size:12px}
   .panel{
     position:fixed;top:56px;bottom:46px;width:min(88vw,360px);z-index:40;
-    box-shadow:var(--sh-2);transform:translateX(-100%);
-    transition:transform .26s var(--ease);display:block!important;
+    box-shadow:var(--sh-2);
+    /* 抽屉原来整块 translateX(±100%) 滑出屏幕，等于一路飞走。
+       改成只走 70% 的距离（左栏 -70%、右栏 +70%），同时淡出 + 轻微失焦，
+       视觉上是"退回侧边"而不是"被抽走"，回程也短、更跟手。
+       收起后仍有 30% 留在屏幕内，但 opacity 归零，看不到残影。 */
+    transform:translateX(-70%);opacity:0;filter:blur(2px);
+    transition:transform .26s var(--ease),opacity .22s var(--ease),
+               filter .22s var(--ease);display:block!important;
   }
-  .panel.right{right:0;left:auto;transform:translateX(100%)}
-  .panel.open{transform:none}
+  .panel.right{right:0;left:auto;transform:translateX(70%)}
+  .panel.open{transform:none;opacity:1;filter:blur(0)}
   .mobile-tabs{
     display:flex;height:46px;background:var(--ink-800);border-top:1px solid var(--line);
     position:fixed;bottom:0;left:0;right:0;z-index:50;
@@ -2139,7 +2301,7 @@ body.is-day .bet-panel{
     border-radius:22px 22px 0 0;
     border-bottom:0;
     padding-bottom:env(safe-area-inset-bottom);
-    animation:sheetIn .28s cubic-bezier(.22,1,.36,1);
+    animation:sheetIn .28s var(--ease-enter);
   }
   @keyframes sheetIn{
     from{opacity:.6;transform:translateY(45px)}
@@ -2176,7 +2338,7 @@ body.is-day .bet-panel{
 }
 /* 配置折叠面板展开动画 */
 .grp[open] .grp-body{
-  transform-origin:top;animation:groupReveal .24s ease-out both;
+  transform-origin:top;animation:groupReveal .24s var(--ease-enter) both;
 }
 @keyframes groupReveal{
   from{opacity:0;transform:translateY(-5px)}
@@ -2245,8 +2407,8 @@ body.is-day .bet-panel{
   <div class="topactions">
     <button class="icon-btn" id="hudBtn" title="收起两侧面板，只看牌桌（点牌桌背景也能收）">净桌</button>
     <div class="sound-wrap">
-      <button class="icon-btn on" id="soundBtn" title="声音设置" aria-label="声音设置" aria-pressed="true">🔊</button>
-      <div class="sound-menu" id="soundMenu" style="display:none">
+      <button class="icon-btn on" id="soundBtn" title="声音设置" aria-label="声音设置" aria-pressed="true"><span class="icon-swap"><i class="on" data-on>🔊</i><i data-off>🔇</i></span></button>
+      <div class="sound-menu" id="soundMenu">
         <div class="sm-item">
           <label class="sm-label">环境音效</label>
           <label class="switch"><input type="checkbox" id="smSfx" checked><span class="slider"></span></label>
@@ -2338,7 +2500,7 @@ body.is-day .bet-panel{
       <div class="progress"><i id="progressBar"></i></div>
     </div>
 
-    <div class="ask" id="ask" style="display:none">
+    <div class="ask" id="ask">
       <div class="ask-card">
         <div class="ask-head">
           <span class="ask-who" id="askWho">轮到你</span>
@@ -2986,7 +3148,7 @@ function loadCfg() {
     if (c.sound === false) {
       SFX.setEnabled(false);
       const b = $('soundBtn');
-      if (b) { b.textContent = '🔇'; b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
+      if (b) { setSoundIcon(false); b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }
     }
     if (c.tts != null) {
       TTS.setEnabled(!!c.tts);
@@ -4318,7 +4480,9 @@ function nightStatus(text, spinning) {
 
 function hideAsk() {
   const a = $('ask');
-  if (a) a.style.display = 'none';
+  /* 只摘 .show，不写 display:none —— 让退场过渡有机会跑完。
+     元素的 visibility 会在过渡结束后才变 hidden（见 .ask 的 transition 列表）。 */
+  if (a) a.classList.remove('show');
   if (ASK && ASK.timer) { clearInterval(ASK.timer); ASK.timer = null; }
   const t = $('askTimer');
   if (t) { t.textContent = ''; t.classList.remove('warn'); }
@@ -4406,7 +4570,10 @@ function askHuman(kind, opts) {
     body.innerHTML = '';
     foot.innerHTML = '';
     box.classList.remove('mini');
-    box.style.display = '';
+    /* 用 class 而不是 display：display 是瞬时开关，transition 跑不起来。
+       元素始终在 DOM 里且带固定初始态，摘掉 .show 后至少过了一个退场时长，
+       所以这里直接挂回 .show 就是从当前状态过渡回去，不需要强制回流。 */
+    box.classList.add('show');
     const miniBtn = $('askMini');
     if (miniBtn) {
       miniBtn.onclick = () => box.classList.toggle('mini');
@@ -8308,7 +8475,11 @@ function rebuildFeed() {
 
 /* 恢复条：只有存在未打完的存档才出现 */
 function showResumeBar(snap) {
-  hideResumeBar();
+  /* 先把旧的彻底摘掉：hideResumeBar 现在带 200ms 退场延迟，
+     直接调它会在动画期间留下一个旧节点，跟新节点重叠显示。
+     这里要的是"立刻换一个"，所以走同步移除。 */
+  const old = document.getElementById('resumeBar');
+  if (old) old.remove();
   const aliveN = snap.S.seats.filter(s => s.alive).length;
   const el = document.createElement('div');
   el.id = 'resumeBar';
@@ -8328,7 +8499,15 @@ function showResumeBar(snap) {
 
 function hideResumeBar() {
   const el = document.getElementById('resumeBar');
-  if (el) el.remove();
+  if (!el) return;
+  /* 原来是直接 remove()，元素瞬间消失。加一段退场：先摘 .show 让
+     opacity/transform/filter 过渡到隐藏态，180ms 后再真正删除。
+     用 el.dataset.leaving 防重入——连着调用两次不会插两个定时器。 */
+  if (el.dataset.leaving) return;
+  el.dataset.leaving = '1';
+  el.classList.remove('show');
+  el.classList.add('out');
+  setTimeout(() => { if (el.parentNode) el.remove(); }, 200);
 }
 
 async function resumeGame(snap) {
@@ -9408,15 +9587,21 @@ $('viewBtn').addEventListener('click', toggleView);
 $('soundBtn').addEventListener('click', (e) => {
   e.stopPropagation();
   const menu = $('soundMenu');
-  const show = menu.style.display === 'none' || !menu.style.display;
-  menu.style.display = show ? 'block' : 'none';
+  /* 用 class 切而不是 display 切。display 是瞬时开关，改的瞬间元素直接
+     出现/消失，transition 根本来不及跑；而且它在 none/block 之间跳，
+     中途再点也不会"从当前位置折返"，只能硬切。
+     交给 .show 控制 opacity/transform 后，连点两下就是就地来回，
+     动画永远从当前进度继续，不会重播。 */
+  const show = !menu.classList.contains('show');
+  menu.classList.toggle('show', show);
   // 每次打开都刷新一遍：音色列表是异步加载的，第一次打开时可能还是空
   if (show) syncTtsUI(TTS.enabled);
 });
 document.addEventListener('click', (e) => {
   const wrap = document.querySelector('.sound-wrap');
   if (wrap && !wrap.contains(e.target)) {
-    $('soundMenu').style.display = 'none';
+    const menu = $('soundMenu');
+    if (menu) menu.classList.remove('show');
   }
 });
 
@@ -9480,6 +9665,17 @@ $('smSkip').addEventListener('click', () => {
 $('smTest').addEventListener('click', () => TTS.test());
 
 /* 语音相关的三处开关（声音菜单 / 配置面板）始终保持一致 */
+/* 声音图标的开合。图标是双层叠放的（🔊 / 🔇 都常驻），
+   只切 .on 让两层交叉淡化，不替换文本 —— 替换文本是瞬间的、不可过渡的。 */
+function setSoundIcon(on) {
+  const b = $('soundBtn');
+  if (!b) return;
+  const swap = b.querySelector('.icon-swap');
+  if (!swap) return;
+  swap.querySelector('[data-on]').classList.toggle('on', on);
+  swap.querySelector('[data-off]').classList.toggle('on', !on);
+}
+
 function syncTtsUI(on) {
   $('smTtsOpts').style.display = on ? 'flex' : 'none';
   $('smTtsSkip').style.display = on ? 'flex' : 'none';
@@ -9509,7 +9705,10 @@ function syncTtsUI(on) {
   const bgmOn = (typeof BGM !== 'undefined') ? BGM.enabled : true;
   const anyOn = sfxOn || bgmOn || on;
   if (b) {
-    b.textContent = anyOn ? '🔊' : '🔇';
+    /* 这里原来直接写 textContent = '🔊' / '🔇'，字形硬替换，没有过渡。
+       改成让两层图标交叉淡化：一层淡出同时缩小失焦，另一层从缩小状态
+       淡入复位。transition 天然可打断，中途反复点也不会重播。 */
+    setSoundIcon(anyOn);
     b.classList.toggle('on', anyOn);
     b.setAttribute('aria-pressed', anyOn ? 'true' : 'false');
   }
