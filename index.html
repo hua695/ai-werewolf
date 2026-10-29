@@ -43,6 +43,31 @@
   --r-sm:6px;
   --r-md:10px;
   --r-lg:14px;
+
+  /* ══ 侧栏节奏 token ══
+     侧栏原来散着 7 种圆角（4/5/6/7/8/9/10）、10 档字号
+     （9.5/10/10.5/10.8/11/11.5/11.8/12.3/12.8/13）、
+     6 种间距（6/7/8/9/10/13），同级面板看着不是一套东西。
+     这里收敛成四档圆角、五档字号、一条 4 的倍数间距梯。 */
+
+  /* 圆角：控件 / 卡片 / 分组 / 大容器，四级够用 */
+  --r-ctl:6px;      /* 输入框、小按钮、标签、徽章 */
+  --r-card:10px;    /* 卡片：模型卡、座位卡 */
+  --r-grp:12px;     /* 分组：details 面板 */
+  --r-big:14px;     /* 弹层、大容器 */
+
+  /* 字号：正文级 / 控件级 / 标题级 / 说明级 / 微标级 */
+  --f-body:12.5px;  /* 正文、座位名 */
+  --f-ctl:12px;     /* 按钮、输入框、分组标题 */
+  --f-label:11px;   /* 字段标签、徽章 */
+  --f-hint:11px;    /* 提示语、说明 */
+  --f-micro:10px;   /* 座号、极小徽章 */
+
+  /* 间距：全部 4 的倍数。同一个数只表达同一种关系 */
+  --sp-1:4px;       /* 图标与文字、行内紧贴 */
+  --sp-2:8px;       /* 组内相邻控件 */
+  --sp-3:12px;      /* 卡片内边距、组内分节 */
+  --sp-4:16px;      /* 组间、面板内边距 */
   --sh-1:0 10px 30px rgba(0,0,0,.45);
   --sh-2:0 18px 50px rgba(0,0,0,.55);
   --serif:"Noto Serif SC","Source Han Serif SC","Songti SC",SimSun,Georgia,serif;
@@ -229,9 +254,10 @@ body.is-day .brand-mark{
 @supports not (height:100dvh){ .app{height:calc(100vh - 56px)} }
 
 .panel{background:var(--ink-800);overflow-y:auto;overflow-x:hidden}
-.panel.left{border-right:1px solid var(--line);padding:16px 12px}
+.panel.left{border-right:1px solid var(--line);padding:var(--sp-4) var(--sp-3)}
 .panel.right{
-  border-left:1px solid var(--line);padding:14px 14px 0;
+  /* 左右两侧面板用同一套留白，原来左边 16/12、右边 14/14 对不齐 */
+  border-left:1px solid var(--line);padding:var(--sp-4) var(--sp-3) 0;
   display:flex;flex-direction:column;
 }
 /* 面板顶端一道金色发丝线：中间亮、两端透明，1px。
@@ -254,15 +280,19 @@ body.is-day .panel.left,body.is-day .panel.right{
 /* 关键：details 作为 flex 子项会被压缩，导致内容被裁掉 */
 .panel.right > .grp{flex:0 0 auto}
 .panel.right > .panel-title{flex:0 0 auto}
+
 .panel-title{
-  font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-3);
-  font-weight:700;margin:0 4px 11px;
+  font-size:var(--f-label);letter-spacing:.2em;text-transform:uppercase;color:var(--text-3);
+  font-weight:700;margin:0 var(--sp-1) var(--sp-3);
 }
 
 /* ══════════ 座位 ══════════ */
 .seat-card{
-  display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:10px;align-items:center;
-  padding:7px 8px;border-radius:9px;margin-bottom:2px;
+  /* 第一列宽度由下方 .seat-card{grid-template-columns:34px ...} 覆盖定义，
+     这里给个占位值只是为了独立可读（26px 是旧的无头像版本遗留）。 */
+  display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:var(--sp-2);
+  align-items:center;min-height:44px;
+  padding:var(--sp-2);border-radius:var(--r-card);margin-bottom:2px;
   border:1px solid transparent;
   transition:background-color .22s var(--ease),border-color .22s var(--ease),
              transform .2s ease-out,box-shadow .2s ease-out;
@@ -289,20 +319,17 @@ body.is-day .panel.left,body.is-day .panel.right{
 .seat-card.ghost{opacity:.55}
 .seat-card.ghost .seat-no{background:transparent;border-style:dashed;border-color:#242b3a;color:#414a5e}
 .seat-card.ghost:hover{background:transparent;border-color:transparent}
-.seat-no{
-  width:26px;height:26px;border-radius:7px;display:grid;place-items:center;
-  font-size:11.5px;font-weight:700;background:var(--ink-600);color:var(--text-3);
-  border:1px solid var(--line-soft);font-variant-numeric:tabular-nums;transition:.3s;
-}
+/* 座号徽章的真实定义在文件下方「头像与座位（升级）」段，
+   这里是旧的无头像版本，已删除避免出现两条互相覆盖的 .seat-no。 */
 .seat-main{min-width:0}
 .seat-name{
-  font-size:12.8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  display:flex;align-items:center;gap:5px;letter-spacing:.02em;
+  font-size:var(--f-body);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:flex;align-items:center;gap:var(--sp-1);letter-spacing:.02em;line-height:1.45;
 }
-.seat-role{font-size:10.5px;color:var(--text-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.seat-model{color:#737d99;font-size:9.5px;margin-left:4px;letter-spacing:0}
+.seat-role{font-size:var(--f-micro);color:var(--text-3);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+.seat-model{color:#737d99;font-size:var(--f-micro);margin-left:var(--sp-1);letter-spacing:0}
 .seat-card.speaking .seat-model{color:#9aa4bd}
-.seat-state{font-size:10px;font-weight:600;letter-spacing:.08em;padding:1px 5px;border-radius:4px}
+.seat-state{font-size:var(--f-micro);font-weight:600;letter-spacing:.08em;padding:2px var(--sp-1);border-radius:var(--r-ctl)}
 .seat-state.alive{color:#5fb98c;background:rgba(74,168,122,.12)}
 .seat-state.out{color:#8a5147;background:rgba(207,68,51,.1)}
 
@@ -1103,14 +1130,18 @@ body.is-day .hero h1::after{
 
 /* ══════════ 设置面板 ══════════ */
 .grp{
-  border:1px solid var(--line-soft);border-radius:var(--r-md);margin-bottom:9px;
+  /* 组间 16、组内 8：组与组之间要明显比组内松，否则一片卡片看不出层级 */
+  border:1px solid var(--line-soft);border-radius:var(--r-grp);margin-bottom:var(--sp-4);
   background:var(--ink-700);overflow:hidden;
 }
+.grp:last-of-type{margin-bottom:var(--sp-3)}
 /* 分组标题做成一条有底色的标题栏，不再是裸的一行文字——
    六七个 details 平铺时，没有底色就分不清哪行是标题哪行是内容 */
 .grp>summary{
-  padding:10px 12px;font-size:12.3px;font-weight:600;color:var(--text-2);cursor:pointer;
-  list-style:none;display:flex;align-items:center;gap:9px;user-select:none;
+  /* 44px 高是触控可点下限，整行都是点击区 */
+  min-height:44px;
+  padding:var(--sp-3);font-size:var(--f-ctl);font-weight:600;color:var(--text-2);cursor:pointer;
+  list-style:none;display:flex;align-items:center;gap:var(--sp-2);user-select:none;
   transition:.16s;letter-spacing:.03em;
   background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
   border-bottom:1px solid transparent;
@@ -1118,39 +1149,51 @@ body.is-day .hero h1::after{
 .grp[open]>summary{border-bottom-color:var(--line-soft)}
 .grp>summary::-webkit-details-marker{display:none}
 .grp>summary::before{
-  content:'';width:0;height:0;border-left:4px solid var(--text-3);
-  border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;
-  transition:transform .2s var(--ease);flex-shrink:0;
+  /* 三角整体比 12px 字高略小一圈，视觉上才「配」得上文字 */
+  content:'';width:0;height:0;border-left:4.5px solid var(--text-3);
+  border-top:3.8px solid transparent;border-bottom:3.8px solid transparent;
+  transition:transform .2s var(--ease);flex-shrink:0;margin-right:1px;
 }
 .grp[open]>summary::before{transform:rotate(90deg)}
 .grp>summary:hover{background:var(--ink-600)}
-.grp-body{padding:11px 12px 13px}
-.field{margin-bottom:10px}
+.grp-body{padding:var(--sp-3) var(--sp-3) var(--sp-4)}
+.field{margin-bottom:var(--sp-3)}
 .field:last-child{margin-bottom:0}
-.field label{display:block;font-size:11px;color:var(--text-3);margin-bottom:5px;letter-spacing:.05em}
+.field label{display:block;font-size:var(--f-label);color:var(--text-3);margin-bottom:var(--sp-1);letter-spacing:.05em}
 .inp,.sel,.ta{
-  width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:var(--r-sm);
-  background:var(--ink-600);color:var(--text);font-size:12.4px;font-family:inherit;
+  /* 32px 高：既放得下 12px 字加行距，点起来也不至于戳不准 */
+  width:100%;min-height:32px;padding:6px var(--sp-2);border:1px solid var(--line);
+  border-radius:var(--r-ctl);
+  background:var(--ink-600);color:var(--text);font-size:var(--f-ctl);font-family:inherit;
   transition:border-color .18s,background .18s;
 }
 .inp:hover,.sel:hover,.ta:hover{border-color:#313a4d}
 .inp:focus,.sel:focus,.ta:focus{outline:none;border-color:rgba(217,169,75,.55);background:var(--ink-500)}
 .inp::placeholder,.ta::placeholder{color:#4a5265}
-.ta{min-height:52px;resize:vertical;line-height:1.6;font-size:11.8px}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ta{min-height:52px;resize:vertical;line-height:1.6;font-size:var(--f-label)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
 /* 提示语左边补一道金色细线，和正文分开——满面板都是 10.8px 灰字时，
    哪句是解释哪句是标签根本分不出来 */
 .hint{
-  font-size:10.8px;color:var(--text-3);line-height:1.7;margin-top:6px;opacity:.9;
-  padding-left:8px;border-left:2px solid rgba(217,169,75,.22);
+  font-size:var(--f-hint);color:var(--text-3);line-height:1.7;margin-top:var(--sp-2);opacity:.9;
+  padding-left:var(--sp-2);border-left:2px solid rgba(217,169,75,.22);
 }
-.check{display:flex;align-items:center;gap:8px;font-size:11.8px;color:var(--text-3);cursor:pointer;margin-top:7px}
-.check input{accent-color:var(--gold);width:13px;height:13px;cursor:pointer}
+.check{
+  /* 上下留 8 内边距，整行点得中；图标 14px 比 12.5px 文字略小一圈 */
+  display:flex;align-items:center;gap:var(--sp-2);
+  font-size:var(--f-body);color:var(--text-3);cursor:pointer;
+  padding:var(--sp-2) 0;margin-top:0;
+}
+.check input{
+  accent-color:var(--gold);width:14px;height:14px;flex-shrink:0;
+  cursor:pointer;margin:0;
+}
 /* 勾选项之间加一道极淡的分隔，十几项堆在一起时能一条条数过来 */
-.check + .check{border-top:1px solid rgba(255,255,255,.035);padding-top:7px}
+.check + .check{border-top:1px solid rgba(255,255,255,.035)}
 
 .btn{
-  width:100%;padding:10px 14px;border:none;border-radius:var(--r-sm);font-size:13px;font-weight:600;
+  width:100%;min-height:40px;padding:var(--sp-2) var(--sp-3);
+  border:none;border-radius:var(--r-ctl);font-size:var(--f-ctl);font-weight:600;
   cursor:pointer;transition:background-color .18s var(--ease),box-shadow .18s var(--ease),transform .15s ease-out;font-family:inherit;letter-spacing:.06em;
 }
 /* 主按钮用鎏金古铜，不用血红。
@@ -1183,17 +1226,39 @@ body.is-day .btn.primary:hover:not(:disabled){
 .btn.ghost:hover:not(:disabled){color:var(--text);background:var(--ink-500);border-color:#333d51}
 .btn.ghost:active:not(:disabled){transform:scale(.96)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-row{display:flex;gap:8px;margin-top:10px}
+.btn-row{display:flex;gap:var(--sp-2);margin-top:var(--sp-3)}
 
-.seat-editor{max-height:320px;overflow-y:auto;padding-right:4px;margin:0 -4px}
-.edit-row{display:grid;grid-template-columns:60px 1fr;gap:6px;margin-bottom:7px;align-items:start}
-.edit-row .e-name{padding:5px 7px;font-size:12px}
-.edit-row .e-persona{min-height:46px;padding:5px 7px;font-size:11.2px;resize:vertical;line-height:1.55}
+/* 侧栏里原来有六处写死的 style="margin-top:10px" 之类的间距，
+   各自绕过 token、还比同一层级的其它块松或紧。
+   收敛成三个语义类：普通偏移 / 小偏移 / 去掉默认上边距。 */
+.gap-top{margin-top:var(--sp-3)}
+.gap-top-sm{margin-top:var(--sp-1)}
+.flush-top{margin-top:0;margin-bottom:var(--sp-2)}
+
+.seat-editor{max-height:320px;overflow-y:auto;padding-right:var(--sp-1);margin:0 calc(var(--sp-1) * -1)}
+.edit-row{display:grid;grid-template-columns:60px 1fr;gap:var(--sp-2);margin-bottom:var(--sp-2);align-items:start}
+/* 名字框和人设框上沿要对齐。名字是单行 input（32px），人设是 46px 的
+   多行框，不显式给 min-height 就会差出一截，看起来像名字框陷进去了。
+   给名字框补到 46px，跟人设框首屏等高，两个上沿齐平。 */
+.edit-row .e-name{
+  /* 单行框撑到 46px 后文字会贴顶，用行高把它压回垂直居中 */
+  padding:6px var(--sp-2);font-size:var(--f-ctl);min-height:46px;line-height:32px;
+}
+.edit-row .e-persona{min-height:46px;padding:6px var(--sp-2);font-size:var(--f-hint);resize:vertical;line-height:1.55}
 
 .dock{
-  position:sticky;bottom:0;padding:12px 0 14px;
-  background:linear-gradient(180deg,rgba(11,15,23,0),var(--ink-800) 26%);
+  /* 底部常驻「开始对局」。它是 sticky，滚到一半时会浮在可见区底部，
+     压住下面还没滚到的内容——这是 sticky 的固有行为，不是 bug。
+     但蒙版必须是实色：原来用 26% 才变实的渐变，按钮上沿有十几像素
+     是半透明的，被压住的勾选项会透出来，看着像点不到。
+     现在改成「上 16px 渐隐（只做过渡）+ 之后全实」，
+     渐隐带比按钮高出的部分还短，按钮本体坐实在实色上。 */
+  position:sticky;bottom:0;
+  padding:var(--sp-4) 0;
   margin-top:auto;
+  background:
+    linear-gradient(180deg,rgba(11,15,23,0) 0,var(--ink-800) var(--sp-4)) top/100% var(--sp-4) no-repeat,
+    var(--ink-800);
 }
 
 /* ══════════ 弹层 ══════════ */
@@ -1302,8 +1367,10 @@ body.is-day .btn.primary:hover:not(:disabled){
 .seat-card.dead .seat-ava svg{filter:grayscale(1) brightness(.5)}
 .seat-card.speaking .seat-ava svg{box-shadow:0 0 0 2px rgba(217,169,75,.55),0 0 16px rgba(217,169,75,.35)}
 .seat-no{
+  /* 叠在头像左上角的座号徽章。15px 高、9px 字是头像上的角标尺寸，
+     不跟正文走 —— 但圆角归到 radius token 体系，别再单独写死 8px。 */
   position:absolute;left:-4px;top:-4px;min-width:15px;height:15px;padding:0 3px;
-  border-radius:8px;font-size:9px;line-height:15px;text-align:center;font-weight:700;
+  border-radius:var(--r-ctl);font-size:9px;line-height:15px;text-align:center;font-weight:700;
   background:var(--ink-800);border:1px solid var(--line);color:var(--text-3);
   font-variant-numeric:tabular-nums;pointer-events:none;
 }
@@ -1405,67 +1472,71 @@ body.is-day .btn.primary:hover:not(:disabled){
    现在头部是厂商，中间是模型名和密钥，底部永远有一个「去哪拿 Key」的直链，
    整张卡片有底色有边界，填到哪一步一目了然。 */
 .pool-row{
-  padding:11px 12px 12px;margin-bottom:9px;
+  /* 卡片之间 8、卡片内部 12：同组卡片比组间紧一档 */
+  padding:var(--sp-3);margin-bottom:var(--sp-2);
   background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
-  border:1px solid var(--line);border-radius:var(--r-md);
+  border:1px solid var(--line);border-radius:var(--r-card);
   transition:border-color .18s,background .18s;
 }
 .pool-row:hover{border-color:#33405a;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
 .pool-row:last-child{margin-bottom:0}
-.pool-top{display:flex;gap:6px;align-items:center;margin-bottom:9px}
+.pool-top{display:flex;gap:var(--sp-2);align-items:center;margin-bottom:var(--sp-3)}
 .pool-top .sel{flex:1 1 auto;min-width:0;font-weight:600}
 .pool-del{
-  flex-shrink:0;width:24px;height:24px;border-radius:5px;background:var(--ink-600);
-  border:1px solid var(--line);color:var(--text-3);font-size:14px;line-height:1;cursor:pointer;
+  /* 28px 是能稳稳点中的最小尺寸，24px 太抠 */
+  flex-shrink:0;width:28px;height:28px;border-radius:var(--r-ctl);
+  background:var(--ink-600);
+  border:1px solid var(--line);color:var(--text-3);font-size:14px;line-height:1;
+  cursor:pointer;display:grid;place-items:center;
   transition:.16s;
 }
 .pool-del:hover{border-color:rgba(207,68,51,.5);color:var(--blood)}
-.pool-fields{display:flex;flex-direction:column;gap:7px}
+.pool-fields{display:flex;flex-direction:column;gap:var(--sp-2)}
 .pool-row .inp{margin-bottom:0}
 /* 密钥输入框和眼睛按钮并排，密钥框右边留出按钮的位置 */
 .p-keywrap{position:relative}
 .p-keywrap .inp{padding-right:34px}
 .p-eye{
-  position:absolute;right:4px;top:50%;transform:translateY(-50%);
-  width:26px;height:26px;border:none;border-radius:5px;background:transparent;
+  position:absolute;right:var(--sp-1);top:50%;transform:translateY(-50%);
+  width:26px;height:26px;border:none;border-radius:var(--r-ctl);background:transparent;
   color:var(--text-3);font-size:12px;line-height:1;cursor:pointer;
-  transition:.16s;opacity:.75;
+  transition:.16s;opacity:.75;display:grid;place-items:center;
 }
 .p-eye:hover{opacity:1;background:rgba(255,255,255,.07);color:var(--text-2)}
 .p-eye.on{color:var(--gold);opacity:1}
 /* 「去哪拿 Key」直链：整张卡片里最该被看见的东西 */
 .key-link{
-  display:flex;align-items:center;gap:8px;
-  margin-top:9px;padding:7px 10px;border-radius:7px;
+  display:flex;align-items:center;gap:var(--sp-2);
+  margin-top:var(--sp-2);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-ctl);
   background:rgba(217,169,75,.1);border:1px solid rgba(217,169,75,.26);
-  color:var(--gold);font-size:11px;font-weight:600;letter-spacing:.02em;
-  text-decoration:none;cursor:pointer;transition:.16s;
+  color:var(--gold);font-size:var(--f-label);font-weight:600;letter-spacing:.02em;
+  text-decoration:none;cursor:pointer;transition:.16s;min-height:40px;
 }
 .key-link:hover{background:rgba(217,169,75,.18);border-color:rgba(217,169,75,.48)}
-.key-link .kl-ico{font-size:11px;flex-shrink:0}
+.key-link .kl-ico{font-size:12px;flex-shrink:0;line-height:1}
 .key-link .kl-txt{line-height:1.45;min-width:0}
 .key-link .kl-txt b{
-  display:block;font-weight:600;font-size:10.5px;color:var(--text-2);
-  word-break:break-all;letter-spacing:.01em;
+  display:block;font-weight:600;font-size:var(--f-micro);color:var(--text-2);
+  word-break:break-all;letter-spacing:.01em;margin-top:1px;
 }
-.key-link .kl-arrow{margin-left:auto;font-size:11px;opacity:.8;flex-shrink:0}
+.key-link .kl-arrow{margin-left:auto;font-size:12px;opacity:.8;flex-shrink:0}
 /* 没有直链的（本地 Ollama / 自定义）用一句说明代替，弱化处理 */
 .key-note{
-  display:block;margin-top:8px;padding-left:1px;
-  font-size:10.8px;line-height:1.6;color:var(--text-3);
+  display:block;margin-top:var(--sp-2);padding-left:1px;
+  font-size:var(--f-hint);line-height:1.6;color:var(--text-3);
 }
 /* 隐私声明：敢不敢把 Key 填进来，取决于这句话说不说、说得清不清楚 */
 .privacy-note{
-  display:flex;gap:8px;align-items:flex-start;
-  margin-top:11px;padding:9px 10px;border-radius:var(--r-sm);
+  display:flex;gap:var(--sp-2);align-items:flex-start;
+  margin-top:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-ctl);
   background:rgba(94,168,110,.09);border:1px solid rgba(94,168,110,.24);
-  font-size:10.8px;line-height:1.7;color:var(--text-2);
+  font-size:var(--f-hint);line-height:1.7;color:var(--text-2);
 }
-.privacy-note .pn-ico{flex-shrink:0;font-size:11px;line-height:1.6}
+.privacy-note .pn-ico{flex-shrink:0;font-size:12px;line-height:1.6}
 .privacy-note b{color:var(--ok);font-weight:600}
 .pool-status{
-  display:none;font-size:10.8px;line-height:1.6;margin-top:7px;
-  padding:5px 8px;border-radius:6px;word-break:break-word;
+  display:none;font-size:var(--f-hint);line-height:1.6;margin-top:var(--sp-2);
+  padding:var(--sp-1) var(--sp-2);border-radius:var(--r-ctl);word-break:break-word;
   background:rgba(255,255,255,.04);
 }
 .pool-status.on{display:block}
@@ -1486,10 +1557,12 @@ body.is-day .btn.primary:hover:not(:disabled){
 .msg.seatdrop .sd-txt i{font-style:normal;color:var(--text-3);font-size:10.5px}
 
 /* ══════════ 玩法切换 ══════════ */
-.mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
 .mode-btn{
-  padding:9px 4px;border-radius:8px;border:1px solid var(--line);background:var(--ink-600);
-  color:var(--text-3);font-size:11.5px;font-family:inherit;font-weight:600;cursor:pointer;
+  /* 40px 高、整块可点；两个按钮圆角与输入框保持同一档 */
+  min-height:40px;padding:var(--sp-2) var(--sp-1);
+  border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--ink-600);
+  color:var(--text-3);font-size:var(--f-ctl);font-family:inherit;font-weight:600;cursor:pointer;
   transition:.18s var(--ease);letter-spacing:.02em;
 }
 .mode-btn:hover{color:var(--text-2);border-color:#333d51}
@@ -1498,9 +1571,12 @@ body.is-day .btn.primary:hover:not(:disabled){
   background:linear-gradient(180deg,rgba(217,169,75,.16),rgba(217,169,75,.06));
   box-shadow:0 0 0 1px rgba(217,169,75,.14) inset;
 }
-.diff-switch{grid-template-columns:1fr 1fr 1fr;gap:6px}
-.diff-switch .mode-btn{padding:7px 2px;font-size:11px;letter-spacing:0}
-#diffField .hint{margin-top:0;line-height:1.6}
+.diff-switch{grid-template-columns:1fr 1fr 1fr;gap:var(--sp-1)}
+.diff-switch .mode-btn{padding:var(--sp-2) 2px;font-size:var(--f-label);letter-spacing:0;min-height:34px}
+/* 难度提示紧跟在三段按钮下面，margin-top 归零会贴死按钮底边；
+   给 8px 与其它组内相邻控件保持一致（ID 选择器优先级高于 .gap-top-sm，
+   所以这里必须显式写值，不能靠外面那个类）。 */
+#diffField .hint{margin-top:var(--sp-2);line-height:1.6}
 /* 休闲模式的提示条 */
 .ask-hint{
   display:flex;gap:6px;align-items:flex-start;margin-bottom:9px;padding:7px 9px;
@@ -2292,18 +2368,18 @@ body.is-day .bet-panel{
           <button class="mode-btn active" data-mode="watch">观战 · 全交给 AI</button>
           <button class="mode-btn" data-mode="play">参与 · 我坐一桌</button>
         </div>
-        <div class="field" id="humanSeatField" style="display:none;margin-top:10px">
+        <div class="field gap-top" id="humanSeatField" style="display:none">
           <label>我坐几号位</label>
           <select class="sel" id="humanSeat"></select>
         </div>
-        <div class="field" id="diffField" style="display:none;margin-top:10px">
+        <div class="field gap-top" id="diffField" style="display:none">
           <label>难度</label>
           <div class="mode-switch diff-switch" id="diffSwitch">
             <button class="mode-btn" data-diff="casual">休闲</button>
             <button class="mode-btn active" data-diff="standard">标准</button>
             <button class="mode-btn" data-diff="hard">硬核</button>
           </div>
-          <div class="hint" id="diffHint" style="margin-top:7px"></div>
+          <div class="hint gap-top-sm" id="diffHint"></div>
         </div>
         <div class="btn-row" id="myCardRow" style="display:none">
           <button class="btn ghost" id="myCardBtn">看我的底牌</button>
@@ -2315,7 +2391,7 @@ body.is-day .bet-panel{
     <details class="grp" open>
       <summary>模型池</summary>
       <div class="grp-body">
-        <div class="hint" style="margin-top:0;margin-bottom:10px">
+        <div class="hint flush-top">
           先选一家、填模型名、贴上密钥，点「测试全部」能亮就绪。每家卡片下面的
           <b style="color:var(--gold);font-weight:600">「官方控制台」</b>就是该厂商的办钥页面，
           域名明写在按钮上，确认是官网再点。
@@ -2341,7 +2417,7 @@ body.is-day .bet-panel{
       <div class="grp-body">
         <label class="check"><input type="checkbox" id="autoIdentity" checked> 让 AI 自己起名、写人设、画头像</label>
         <div class="hint" id="identityHint"></div>
-        <div class="row2" style="margin-top:9px">
+        <div class="row2 gap-top">
           <div class="field">
             <label>温度</label>
             <input class="inp" id="temp" type="number" min="0" max="2" step="0.05" value="0.6">
@@ -2413,7 +2489,7 @@ body.is-day .bet-panel{
         <label class="check"><input type="checkbox" id="focusSpeak"> 焦点发言：人多时每天只让一部分人开口（节奏减半）</label>
         <label class="check"><input type="checkbox" id="streamSpeech" checked> 流式出字：模型边说边显示，不用等整句返回</label>
         <label class="check"><input type="checkbox" id="ttsEnabled" checked> 语音播报发言</label>
-        <div class="row2" style="margin-top:9px">
+        <div class="row2 gap-top">
           <div class="field">
             <label>语音语速</label>
             <select class="sel" id="ttsRate">
