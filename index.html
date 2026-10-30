@@ -510,6 +510,54 @@ body.is-day .stage-bg .shade::after{opacity:1}
 
 /* ══════════ 模型天梯 ══════════ */
 .ladder-list{display:flex;flex-direction:column;gap:9px}
+/* ══════════ 板子平衡 ══════════
+   天梯面板最上面的一块。它回答的是"这游戏公不公平"，
+   比"哪个模型强"更靠前，所以放在模型榜之前。 */
+.balance-box{
+  margin-bottom:var(--sp-4);padding:var(--sp-3);
+  border-radius:var(--r-card);border:1px solid var(--line-soft);
+  background:rgba(255,255,255,.025);
+}
+.bb-title{
+  font-size:var(--f-label);letter-spacing:.16em;color:var(--text-3);
+  font-weight:700;margin-bottom:var(--sp-2);
+}
+.bb-row{
+  display:grid;
+  /* 进度条给固定区间，不要 1fr —— 拉满整行就成了一根长横线，
+     看不出"这是个 0-100% 的仪表"，剩下的空间留给局数说明 */
+  grid-template-columns:44px minmax(80px,180px) 62px minmax(90px,1fr) auto;
+  align-items:center;gap:var(--sp-2);
+  padding:6px 0;font-size:var(--f-label);
+}
+.bb-row + .bb-row{border-top:1px solid rgba(255,255,255,.04)}
+.bb-n{color:var(--text-2);font-weight:600;font-variant-numeric:tabular-nums}
+.bb-bar{
+  height:6px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden;
+}
+.bb-bar i{
+  display:block;height:100%;border-radius:999px;
+  background:linear-gradient(90deg,#b23a29,#d9563f);
+  transition:width .5s var(--ease-enter);
+}
+.bb-num{color:var(--text-2);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.bb-sub{color:var(--text-3);font-size:var(--f-micro)}
+.bb-tag{
+  font-size:var(--f-micro);font-weight:700;padding:2px var(--sp-2);
+  border-radius:999px;white-space:nowrap;
+}
+.bb-row.ok .bb-tag{color:#5fb98c;background:rgba(74,168,122,.14)}
+.bb-row.low .bb-tag{color:var(--text-3);background:rgba(255,255,255,.06)}
+.bb-row.wolf-heavy .bb-tag{color:#e0917f;background:rgba(207,68,51,.14)}
+.bb-row.good-heavy .bb-tag{color:#8fb8e0;background:rgba(96,138,205,.16)}
+.bb-foot{
+  margin-top:var(--sp-2);font-size:var(--f-micro);line-height:1.6;color:var(--text-3);
+}
+@media (max-width:600px){
+  .bb-row{grid-template-columns:38px minmax(48px,1fr) 56px auto;row-gap:2px}
+  .bb-sub{grid-column:1 / -1}
+}
+
 .ladder-row{
   padding:10px 12px;border-radius:var(--r-md);
   background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
@@ -1729,6 +1777,10 @@ body.is-day .btn.primary:hover:not(:disabled){
 }
 .ask-hint b{color:var(--gold);font-weight:700;flex:none}
 .ask-hint.hide{display:none}
+/* 动作类选项（上警 / 不上警）。竖排按钮，每个都够高，点起来不犹豫 */
+.ask-opts{display:flex;flex-direction:column;gap:var(--sp-2)}
+.ask-opt{min-height:44px;font-size:13px;letter-spacing:.04em}
+.ask-opt:hover{color:var(--text);background:var(--ink-500)}
 
 /* ══════════ 轮到你 ══════════ */
 .ask{
@@ -2051,6 +2103,38 @@ body.is-day .rt-seat[data-camp="god"] .rt-role{background:rgba(104,76,20,.85)}
 .rt-seat.speaking .rt-ava{
   box-shadow:0 0 0 2.5px var(--gold),0 0 22px rgba(217,169,75,.45);
   transform:translateY(-4px) scale(1.06);
+}
+/* ══════════ 警徽 ══════════
+   圆桌上放在头像右上角，和座号徽章对称；左栏座位卡放在名字后面。
+   金色 + 描边，保证压在明暗不一的背景照片上仍然认得出。 */
+/* 圆桌：掏空的环形警徽，中间一颗实心点。
+   原来是把「警」字压进 18px 圆里 —— 这个字 19 画，内圈只剩 15px，
+   10px 字号下糊成一坨墨点，远看像渲染错误。
+   换成纯图形符号：金色环 + 实心圆点，5px 尺寸下也能认出来，
+   语义靠 title 和 aria-label 补。 */
+.rt-sheriff{
+  position:absolute;right:-4px;bottom:-3px;
+  width:20px;height:20px;border-radius:50%;
+  background:radial-gradient(circle at 50% 50%,
+    #1a1206 0 3.2px, transparent 3.2px 5px,
+    #f0d49a 5px 6.6px, transparent 6.6px),
+    linear-gradient(180deg,#e0b962,#a8781f);
+  border:1.5px solid rgba(10,13,19,.9);
+  box-shadow:0 2px 8px rgba(0,0,0,.55),0 0 12px rgba(217,169,75,.4);
+  pointer-events:none;
+}
+/* 左栏：名字后面跟一枚文字徽章。「警长」两个字在 9.5px 下比单字清楚得多，
+   而且座位卡是给人细看的地方，不追求图形化。 */
+.sh-badge{
+  display:inline-grid;place-items:center;
+  height:15px;padding:0 5px;border-radius:999px;
+  margin-left:var(--sp-1);
+  background:linear-gradient(180deg,#e0b962,#a8781f);
+  color:#1a1206;font-size:9.5px;font-weight:800;line-height:1;
+  letter-spacing:0;vertical-align:middle;flex:none;
+}
+.seat-card.sheriff{
+  background:linear-gradient(90deg,rgba(217,169,75,.09),rgba(217,169,75,.02) 60%,transparent);
 }
 .rt-seat.speaking .rt-name{color:var(--gold)}
 .rt-seat.dead .rt-ava{filter:grayscale(1) brightness(.6);opacity:.55}
@@ -2546,6 +2630,10 @@ body.is-day .bet-panel{
         <div class="btn-row" id="myCardRow" style="display:none">
           <button class="btn ghost" id="myCardBtn">看我的底牌</button>
         </div>
+        <label class="check" style="margin-top:var(--sp-2)">
+          <input type="checkbox" id="sheriffOn" checked> 第一天选警长（多一轮上警与投票）
+        </label>
+        <div class="hint" id="sheriffHint">警长票权 1.5 票，白天最后发言。开局多一次明确表态的机会，中盘不容易哑火。</div>
         <div class="hint" id="modeHint">观战模式：你只负责看、押注、翻别人的档案。</div>
       </div>
     </details>
@@ -3061,6 +3149,7 @@ function readCfg() {
     showWhisper: $('showWhisper') ? $('showWhisper').checked : true,
     suppressThinking: $('suppressThinking') ? $('suppressThinking').checked : true,
     focusSpeak: $('focusSpeak') ? $('focusSpeak').checked : false,
+    sheriff: $('sheriffOn') ? $('sheriffOn').checked : true,
     stream: $('streamSpeech') ? $('streamSpeech').checked : true,
     autoIdentity: $('autoIdentity') ? $('autoIdentity').checked : true,
     mode: MODE,
@@ -3079,6 +3168,7 @@ function saveCfg() {
       allowNoKey: c.allowNoKey, speechLen: c.speechLen, paceRaw: c.paceRaw,
       godLog: c.godLog, showWhisper: c.showWhisper, autoIdentity: c.autoIdentity,
       suppressThinking: c.suppressThinking, focusSpeak: c.focusSpeak,
+      sheriff: c.sheriff,
       stream: c.stream,
       mode: c.mode, humanSeat: c.humanSeat, diff: c.diff,
       poolv: POOL_VERSION,
@@ -3128,6 +3218,7 @@ function loadCfg() {
     if (c.showWhisper != null && $('showWhisper')) $('showWhisper').checked = !!c.showWhisper;
     if (c.suppressThinking != null && $('suppressThinking')) $('suppressThinking').checked = !!c.suppressThinking;
     if (c.focusSpeak != null && $('focusSpeak')) $('focusSpeak').checked = !!c.focusSpeak;
+    if (c.sheriff != null && $('sheriffOn')) $('sheriffOn').checked = !!c.sheriff;
     if (c.stream != null && $('streamSpeech')) $('streamSpeech').checked = !!c.stream;
     if (c.autoIdentity != null && $('autoIdentity')) $('autoIdentity').checked = !!c.autoIdentity;
     if (c.mode) MODE = c.mode === 'play' ? 'play' : 'watch';
@@ -3477,6 +3568,34 @@ function mergeLadder() {
   if (!SPEC_STATS.size) return;
   const l = readLadder();
   l.games = (l.games || 0) + 1;
+
+  /* ---- 平衡埋点 ----
+     天梯原来只按模型记胜率，从来没有按"板子人数 / 阵营"记过。
+     结果就是：狼人到底赢多少、一局平均几天、警长机制有没有把
+     局拉长，这些一律没有数据，任何平衡调整都只能拍脑袋。
+     这里按人数分桶记，跨局累积。
+     目标基线（社交推理的实证区间）：狼人胜率 40-50%。 */
+  if (S && S.winner) {
+    const n = S.seats.length;
+    l.boards = l.boards || {};
+    const b = l.boards[n] || (l.boards[n] = {
+      games: 0, good: 0, wolf: 0, days: 0, sheriff: 0, sheriffWin: 0
+    });
+    b.games++;
+    if (S.winner === 'good') b.good++; else b.wolf++;
+    b.days += S.round || 1;
+    if (S.sheriff != null) {
+      b.sheriff++;
+      /* 警长所在阵营的胜负：用来回答"警长是不是决定性的" */
+      const sp = S.seats.find(x => x.seat === S.sheriff);
+      if (sp) {
+        const sheriffIsWolf = isWolfRole(sp.role);
+        if ((sheriffIsWolf && S.winner !== 'good') || (!sheriffIsWolf && S.winner === 'good')) {
+          b.sheriffWin++;
+        }
+      }
+    }
+  }
   SPEC_STATS.forEach((st, k) => {
     const d = l.models[k] || (l.models[k] = {
       key: k, provider: st.provider, model: st.model,
@@ -4731,6 +4850,20 @@ function askHuman(kind, opts) {
       else tip.textContent = (tip.textContent ? tip.textContent + ' · ' : '') + '毒药已用完，只能选择救或不救';
     }
 
+    else if (o.opts && o.opts.length) {
+      /* 自定义选项：不是选人，是选一个动作（例：上警 / 不上警）。
+         和 pick 分开是因为返回值类型不同——这里回的是字符串 key，
+         pick 回的是座位号。混在一起，调用方拿到值还得猜类型。 */
+      body.innerHTML = '<div class="ask-opts">' +
+        o.opts.map(op =>
+          '<button class="btn ghost ask-opt" data-opt="' + esc(op.key) + '">' +
+            esc(op.label) + '</button>'
+        ).join('') + '</div>';
+      body.querySelectorAll('[data-opt]').forEach(b => {
+        b.addEventListener('click', () => answerAsk(b.dataset.opt));
+      });
+    }
+
     else {
       // pick：从候选里点一个
       body.innerHTML = '<div class="ask-grid">' + cands.map(seatBtn).join('') + '</div>';
@@ -4798,7 +4931,10 @@ function showDealCard(p) {
       (S.winMode === 'parity' ? '狼人杀到存活人数与狼数持平就赢。' : '狼人杀光神职或杀光平民就赢。') + '<br>' +
       '出局不翻身份牌，死者的身份只在复盘时公开。<br>' +
       '本局同守同救算平安：守卫和女巫同时保下同一个人，那个人不会死。<br>' +
-      '被毒杀的人不能开枪。' +
+      '被毒杀的人不能开枪。<br>' +
+      (sheriffEnabled()
+        ? '第一天先选警长：想当的人上警表态，全体投票。警长放逐票权 1.5 票，白天最后发言，出局后警徽消失。'
+        : '本局不选警长。') +
       '</div></details>';
     const box = $('deal');
     box.hidden = false;
@@ -5251,6 +5387,16 @@ function publicState() {
   const lines = [];
   lines.push('【存活】' + alive.map(s => s.seat + ' 号 ' + s.name).join('、'));
   lines.push('【已出局】' + (dead.length ? dead.map(s => s.seat + ' 号 ' + s.name).join('、') : '无'));
+  /* 警长是公开身份，所有人（包括没上警的）都该知道，而且必须知道
+     他有 1.5 票——不知道票权，AI 会按 1 票去算票数，归票判断全是错的。 */
+  if (S.sheriff != null) {
+    const sh = seatOf(S.sheriff);
+    const shAlive = sh && sh.alive;
+    lines.push('【警长】' + S.sheriff + ' 号 ' + (sh ? sh.name : '') +
+      (shAlive ? '（在场，放逐票权 1.5 票，白天最后发言）' : '（已出局，无警长）'));
+  } else if (S.sheriffLog && S.sheriffLog.length) {
+    lines.push('【警长】本局没有警长');
+  }
   if (S.news.length) {
     lines.push('');
     lines.push('【本轮公开信息】');
@@ -5443,7 +5589,9 @@ function renderTable() {
       (campAttr ? ' data-camp="' + campAttr + '"' : '') +
       ' style="left:' + x.toFixed(2) + '%;top:' + y.toFixed(2) + '%">' +
       '<div class="rt-ava">' + avatarSVG(s.avatar, 54) +
-        '<span class="rt-no">' + s.seat + '</span></div>' +
+        '<span class="rt-no">' + s.seat + '</span>' +
+        (S.sheriff === s.seat && s.alive ? '<span class="rt-sheriff" title="警长" aria-label="警长" role="img"></span>' : '') +
+      '</div>' +
       '<div class="rt-name">' + esc(s.name) +
         (s.human ? '<i class="rt-model">真人</i>'
                  : '<i class="rt-model" title="' + esc(specLabel(s.spec)) + '">' + esc(modelShort(s.spec)) + '</i>') +
@@ -5660,12 +5808,14 @@ function renderSeats() {
     const roleColor = reveal ? meta.color : '#5f6779';
     const speaking = S.speaking === s.seat ? ' speaking' : '';
     const dead = s.alive ? '' : ' dead';
+    const isSheriff = S.sheriff === s.seat && s.alive;
     const me = (MODE === 'play' && s.seat === HUMAN) ? ' me' : '';
-    return '<div class="seat-card' + dead + me + speaking + '" data-seat="' + s.seat + '">' +
+    return '<div class="seat-card' + dead + me + speaking + (isSheriff ? ' sheriff' : '') + '" data-seat="' + s.seat + '">' +
       '<div class="seat-ava" data-profile="' + s.seat + '">' + avatarSVG(s.avatar, 34) +
         '<span class="seat-no"' + (reveal ? ' style="color:' + meta.color + '"' : '') + '>' + s.seat + '</span></div>' +
       '<div class="seat-main">' +
-        '<div class="seat-name">' + esc(s.name) + '</div>' +
+        '<div class="seat-name">' + esc(s.name) +
+          (isSheriff ? '<span class="sh-badge" title="警长" aria-label="警长">警长</span>' : '') + '</div>' +
         '<div class="seat-role" style="color:' + roleColor + '">' + roleText +
           '<span class="seat-model">· ' + esc(seatModelShort(s)) + '</span></div>' +
       '</div>' +
@@ -7027,6 +7177,8 @@ function initGame(seats, specs) {
     history: [],
     votes: [],
     wolfPlan: null,     // 狼队夜里商量好的白天归票目标
+    sheriff: null,      // 警长座位号。null = 本局没选出来 / 已关闭该机制
+    sheriffLog: [],     // 警长选举记录，复盘用
     revealed: false,
     speaking: null,
     winner: null,
@@ -7592,6 +7744,231 @@ async function shoot(p, reason, id) {
 /* ============================================================
    白天
    ============================================================ */
+/* 警长是否开启。直接读开关本身，不读 CFG 缓存。
+   CFG 是启动瞬间的一份快照，而 applyCfg 之类的回填逻辑会在之后
+   改动 DOM 上的勾选状态，两者可能不同步——实测过：开关显示关，
+   CFG.sheriff 仍是 true，于是"关掉警长"这个动作根本不生效。
+   决策点直接问 DOM，这条路没有缓存可言，也就没有不同步。 */
+function sheriffEnabled() {
+  const cb = $('sheriffOn');
+  if (cb) return !!cb.checked;
+  return !!(CFG && CFG.sheriff);
+}
+
+/* ════════════════════════════════════════════════════════════
+   警长选举（第一天）
+   ────────────────────────────────────────────────────────────
+   purpose      解决"开局无硬信息"。第 1 天没有任何可争论的事实，
+                所有人只能凭感觉发言，中盘必然塌陷。
+                上警表态、竞选理由、投票去向，这三样从第 1 分钟
+                就产生真实信息。
+   experience   玩家在第一天就能看到"谁急着掌权、谁在回避"。
+   输入        存活玩家、各自底牌（私有）、公众状态
+   输出        S.sheriff = 座位号 | null
+   边界        无人上警 → 无警长，对局照常
+                仅一人上警 → 直接当选，省掉一轮投票（省 N 次调用）
+                平票       → 无警长（不做 PK，避免开局就拖长）
+   failure     全部调用失败 → 无警长，不阻塞对局
+   ════════════════════════════════════════════════════════════ */
+async function sheriffElection(id) {
+  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
+  if (!alive.length) return;
+
+  msgPhase('选警长', '第一天 · 上警');
+  setPhasePill('vote', '选警长');
+  setStatus('警长选举：想当的人先表态…', true);
+  await beat(Math.max(300, paceMs() / 2));
+
+  /* ---- 第一轮：上警表态 + 竞选发言，合并成一次调用 ----
+     分成两次调用会让 token 成本翻倍，而"想不想上警"和"为什么"
+     本来就是同一个决策，合并后反而更连贯。 */
+  const runners = [];
+  for (let i = 0; i < alive.length; i++) {
+    await gate(id);
+    const p = alive[i];
+    setStatus((isMe(p) ? '你要不要上警' : p.name + ' 正在考虑上不上警…') +
+      ' · ' + (i + 1) + '/' + alive.length, true);
+    S.speaking = p.seat; renderSeats();
+
+    let want = false, speech = '';
+    if (isMe(p)) {
+      const pick = await askHumanSafe(id, 'pick', {
+        title: '第一天 · 要不要上警',
+        tip: '警长票权 1.5 票，白天最后发言。上警就要公开表态，会被狼盯上也可能是好人队长。',
+        opts: [
+          { key: 'run', label: '上警，我要当警长' },
+          { key: 'skip', label: '不上警，先听别人说' }
+        ]
+      });
+      want = pick === 'run';
+      if (want) {
+        speech = await askHumanSafe(id, 'say', {
+          title: '你的竞选发言',
+          tip: '说清你为什么该当警长，以及你现在最怀疑谁'
+        }) || '（没说什么，只是站上了台）';
+      }
+    } else {
+      try {
+        const res = await callLLM({
+          system: sysPrompt(p, { task: 'speak' }),
+          user: [
+            '【警长选举】',
+            publicState(),
+            privateInfo(p) ? '【只有你知道】\n' + privateInfo(p) : '',
+            memText(p) ? '【你之前的发言与投票】\n' + memText(p) : '',
+            '现在要选警长。警长拥有 1.5 票的放逐票权，并且在白天最后一个发言。',
+            isWolfRole(p.role)
+              ? '【狼队思路】抢到警徽能把归票权握在自己手里，也方便悍跳带节奏；但上警就要当众表态，说漏了会被抓。自己权衡。'
+              : '【好人思路】上警能主导归票、把怀疑摊到台面上；不上警则保留观察的余地。自己权衡。',
+            '输出格式（严格遵守）：',
+            '第一行只写两个字：上警 / 不上警',
+            '如果写「上警」，第二行起写竞选发言，60 到 100 字，说清你想怎么带队、现在最怀疑谁。',
+            '如果写「不上警」，只输出第一行，不要多写。'
+          ].filter(Boolean).join('\n\n'),
+          runId: id,
+          maxTokens: 420,
+          spec: p.spec,
+          task: 'speak'
+        });
+        const raw = String(res || '').trim();
+        const firstLine = raw.split('\n').map(x => x.trim()).find(Boolean) || '';
+        want = /^上警/.test(firstLine) && !/^不上警/.test(firstLine);
+        if (want) {
+          speech = raw.split('\n').slice(1).join('\n').trim();
+          const sp = splitSpeak(speech);
+          speech = sp.body || speech;
+          if (!speech) speech = templateSpeech(p);
+        }
+      } catch (e) {
+        if (e instanceof StopGame) throw e;
+        want = false;
+      }
+    }
+
+    S.speaking = null; renderSeats();
+    if (want) {
+      runners.push({ seat: p.seat, speech });
+      /* 上警的人当众说话，进消息流——这是第一天最重要的信息 */
+      const card = msgSpeech(p, '上警');
+      card.set(clip(speech, 120));
+      SFX.tick();
+      await speakGap();
+    }
+    setProgress((i + 1) / alive.length * 0.5);
+  }
+
+  /* ---- 没人上警 ---- */
+  if (!runners.length) {
+    S.sheriff = null;
+    S.sheriffLog.push({ round: 1, runners: [], sheriff: null, reason: 'nobody' });
+    msgEvent('🔇', '没有人上警，本局无警长。', '');
+    S.history.push('第 1 天：警长选举无人上警，本局无警长');
+    setPhasePill('day', '白天');
+    return;
+  }
+
+  /* ---- 只有一个人上警：直接当选，省掉一轮投票 ---- */
+  if (runners.length === 1) {
+    S.sheriff = runners[0].seat;
+    S.sheriffLog.push({ round: 1, runners: [runners[0].seat], sheriff: runners[0].seat, reason: 'sole' });
+    const sp = seatOf(S.sheriff);
+    msgEvent('🎖️', '只有 ' + S.sheriff + ' 号 ' + (sp ? sp.name : '') + ' 上警，直接当选警长。', 'hot');
+    S.history.push('第 1 天：' + S.sheriff + ' 号当选警长（唯一上警）');
+    renderSeats();
+    setPhasePill('day', '白天');
+    await beat();
+    return;
+  }
+
+  /* ---- 多人上警：全体投票 ---- */
+  msgEvent('🎖️', runners.length + ' 人上警：' +
+    runners.map(r => r.seat + ' 号 ' + nameOf(r.seat)).join('、') + '，开始投票。', 'hot');
+  setStatus('给上警的人投票…', true);
+  await beat(Math.max(240, paceMs() / 2));
+
+  const candSeats = runners.map(r => r.seat);
+  const voters = aliveSeats().filter(s => s.alive);
+
+  /* 真人投票 */
+  let myPick = null;
+  const me = voters.find(isMe);
+  if (me) {
+    const allowed = candSeats.filter(x => x !== me.seat);
+    if (allowed.length) {
+      myPick = await askHumanSafe(id, 'pick', {
+        title: '选警长',
+        tip: '选一个你信得过的人当警长，他/她有 1.5 票',
+        cands: voters.filter(s => allowed.includes(s.seat)),
+        passLabel: '弃票'
+      });
+    }
+  }
+
+  const picks = await pool(voters.filter(p => !isMe(p)), CFG.conc, async p => {
+    await gate(id);
+    const allowed = candSeats.filter(x => x !== p.seat);
+    if (!allowed.length) return { from: p.seat, to: null };
+    try {
+      const res = await chooseSeat(p, id, [
+        '【选警长】',
+        publicState(),
+        privateInfo(p) ? '【只有你知道】\n' + privateInfo(p) : '',
+        '以下这些人上警竞选警长：',
+        runners.map(r => r.seat + ' 号 ' + nameOf(r.seat) + '：' + clip(r.speech, 70)).join('\n'),
+        '选一个你认为当警长对你这方最有利的人。',
+        '从下列座位中选一个：' + allowed.map(x => x + ' 号 ' + nameOf(x)).join('、'),
+        '',
+        '先输出一个座位号数字，再换行用一句话（不超过 20 字）说明理由。'
+      ].filter(Boolean).join('\n\n'), allowed, p.spec, 'vote');
+      const firstLine = String(res.text || '').split('\n').map(x => x.trim()).find(Boolean) || '';
+      let to = parseSeat(firstLine, allowed);
+      if (to == null) to = res.seat;
+      if (to == null) to = pick(allowed);
+      return { from: p.seat, to };
+    } catch (e) {
+      if (e instanceof StopGame) throw e;
+      return { from: p.seat, to: null };
+    }
+  });
+
+  if (me) picks.push({ from: me.seat, to: myPick });
+  const clean = picks.filter(Boolean);
+
+  /* 唱票 */
+  for (const v of clean) {
+    await gate(id);
+    addNode('msg vote-line',
+      '<span class="vl-from">' + v.from + ' 号 ' + esc(nameOf(v.from)) + '</span>' +
+      '<span class="vl-arrow">→</span>' +
+      '<span class="vl-to">' + (v.to == null ? '弃票' : v.to + ' 号 ' + esc(nameOf(v.to))) + '</span>');
+    SFX.tick();
+    await beat(Math.max(120, Math.min(300, paceMs() * 0.4)));
+  }
+
+  const tally = new Map();
+  clean.forEach(v => { if (v.to != null) tally.set(v.to, (tally.get(v.to) || 0) + 1); });
+  const top = topSeat(tally);
+
+  if (!top || top.tie.length > 1) {
+    S.sheriff = null;
+    S.sheriffLog.push({ round: 1, runners: candSeats, sheriff: null, reason: 'tie', tie: top ? top.tie : [] });
+    msgEvent('⚖️', '警长票平票，本局无警长。', '');
+    S.history.push('第 1 天：警长选举平票，本局无警长');
+  } else {
+    S.sheriff = top.seat;
+    S.sheriffLog.push({ round: 1, runners: candSeats, sheriff: top.seat, reason: 'elected' });
+    const sp = seatOf(top.seat);
+    msgEvent('🎖️', top.seat + ' 号 ' + (sp ? sp.name : '') + ' 当选警长（' + top.count + ' 票）。', 'hot');
+    S.history.push('第 1 天：' + top.seat + ' 号当选警长（' + top.count + ' 票）');
+    S.log.push({ round: 1, kind: 'sheriff', seat: top.seat, name: sp ? sp.name : '', text: '当选警长' });
+    SFX.reveal();
+  }
+
+  renderSeats();
+  setPhasePill('day', '白天');
+  await beat();
+}
+
 async function dayPhase(id) {
   S.phase = 'day';
   SFX.day();
@@ -7602,6 +7979,16 @@ async function dayPhase(id) {
   });
   setProgress(0);
   await gate(id);
+
+  /* ---- 第一天：警长选举 ----
+     放在公布死讯之前，这是标准局的顺序：先选警长，再报昨夜谁没了。
+     反过来就少一层看点——知道死讯之后上警，候选人会顺着死者的身份
+     说话，反而没那么多可争的；不知道死讯时上警，
+     才真实反映每个人想抢主导权的急迫程度。 */
+  if (sheriffEnabled() && S.round === 1 && !S.sheriffLog.length) {
+    await sheriffElection(id);
+    await gate(id);
+  }
 
   if (!S.news.length) {
     S.news.push('昨夜是平安夜，无人出局。');
@@ -8083,7 +8470,18 @@ function speechOrder() {
     start = alive.findIndex(s => s.seat > S.lastDeathSeat);
     if (start < 0) start = 0;
   }
-  return alive.slice(start).concat(alive.slice(0, start));
+  const order = alive.slice(start).concat(alive.slice(0, start));
+
+  /* 警长白天最后发言：听完所有人再定调，这是警徽的另一半价值。
+     不挪座位顺序，只把警长挪到队尾——否则"死左死右"的起始位就乱了。 */
+  if (S.sheriff != null) {
+    const i = order.findIndex(s => s.seat === S.sheriff);
+    if (i >= 0 && i !== order.length - 1) {
+      const [sh] = order.splice(i, 1);
+      order.push(sh);
+    }
+  }
+  return order;
 }
 
 async function runVote(id, restrict) {
@@ -8254,7 +8652,15 @@ async function resolveVote(picks, id, isPK) {
   clearLiveTally();
 
   const tally = new Map();
-  picks.forEach(v => { if (v.to != null) tally.set(v.to, (tally.get(v.to) || 0) + 1); });
+  /* 警长 1.5 票。这是警长机制的全部价值所在——
+     不多这半票，当警长只是多一个发言位置，抢警徽就没有实际收益，
+     整个选举环节就退化成一轮没意义的表态。 */
+  const sheriffSeat = S.sheriff;
+  picks.forEach(v => {
+    if (v.to == null) return;
+    const w = (sheriffSeat != null && v.from === sheriffSeat) ? 1.5 : 1;
+    tally.set(v.to, (tally.get(v.to) || 0) + w);
+  });
 
   renderVoteBox(picks, tally);
   S.log.push({ round: S.round, kind: 'vote', pk: !!isPK, picks: picks.map(v => ({ from: v.from, to: v.to, reason: v.reason || '' })) });
@@ -8297,7 +8703,7 @@ function renderVoteBox(picks, tally) {
         '<span class="v-seat">' + seat + '</span>' +
         '<span class="v-name">' + esc(p ? p.name : '?') + '</span>' +
         '<span class="v-track"><i class="v-fill" style="width:' + (cnt / max * 100) + '%"></i></span>' +
-        '<span class="v-cnt">' + cnt + '</span>' +
+        '<span class="v-cnt">' + (Number.isInteger(cnt) ? cnt : cnt.toFixed(1)) + '</span>' +
       '</div>';
     }).join('') +
     '<div class="vote-from">' + rows.map(([seat, cnt]) => {
@@ -8522,6 +8928,12 @@ async function resumeGame(snap) {
   S = snap.S;
   S.revealed = false;
   S.speaking = null;
+  /* 旧版本存的快照没有这两个字段。不补的话，
+     dayPhase 里读 S.sheriffLog.length 会抛 TypeError，
+     而它又包在 try 外面——整局直接卡死，只能重开。
+     新局由 newState 初始化，这里管的是续跑旧存档。 */
+  if (!Array.isArray(S.sheriffLog)) S.sheriffLog = [];
+  if (S.sheriff === undefined) S.sheriff = null;
   /* 存档里记的是当时那台机器的模型分配。池子换过就按当前的重新摊一遍，
      否则续跑会打到已经删掉的模型上。 */
   S.seats.forEach((s, i) => { if (!s.human) s.spec = (specs && specs[i]) || s.spec; });
@@ -8790,11 +9202,40 @@ function openLadder() {
   const bar = (v, color) =>
     '<span class="ld-track"><i style="width:' + Math.round(v / maxWin * 100) + '%;background:' + color + '"></i></span>';
 
+  /* 平衡区块：先回答"这个游戏现在是不是一边倒"，再谈各家模型强弱。
+     顺序很关键——玩家打开天梯第一眼该看到的是游戏本身公不公平。 */
+  const boards = l.boards || {};
+  const bkeys = Object.keys(boards).map(Number).sort((a, b2) => a - b2);
+  const balanceHtml = !bkeys.length ? '' :
+    '<div class="balance-box">' +
+      '<div class="bb-title">板子平衡</div>' +
+      bkeys.map(n => {
+        const b = boards[n];
+        const wolfRate = b.games ? b.wolf / b.games : 0;
+        const avgDays = b.games ? (b.days / b.games) : 0;
+        /* 40-50% 是社交推理的实证平衡区间，超出就标出来 */
+        const flag = b.games < 4 ? 'low'
+          : (wolfRate > 0.58 ? 'wolf-heavy' : wolfRate < 0.36 ? 'good-heavy' : 'ok');
+        const verdict = b.games < 4 ? '样本少'
+          : flag === 'wolf-heavy' ? '狼人偏强'
+          : flag === 'good-heavy' ? '好人偏强' : '平衡';
+        return '<div class="bb-row ' + flag + '">' +
+          '<span class="bb-n">' + n + ' 人</span>' +
+          '<span class="bb-bar"><i style="width:' + Math.round(wolfRate * 100) + '%"></i></span>' +
+          '<span class="bb-num">狼 ' + Math.round(wolfRate * 100) + '%</span>' +
+          '<span class="bb-sub">' + b.games + ' 局 · 平均 ' + avgDays.toFixed(1) + ' 天</span>' +
+          '<span class="bb-tag">' + verdict + '</span>' +
+        '</div>';
+      }).join('') +
+      '<div class="bb-foot">狼人胜率目标区间 40-50%。超出说明某一方有结构性优势，需要调角色或信息量。</div>' +
+    '</div>';
+
   body.innerHTML =
     '<div class="roles-legend">' +
       '<span>累计 ' + l.games + ' 局</span>' +
       '<span class="rl-right"><span class="eb-btn" id="ladderClear">清空数据</span></span>' +
     '</div>' +
+    balanceHtml +
     '<div class="ladder-list">' +
       rows.map(r => {
         const label = esc(r.d.provider + ' · ' + r.d.model);
@@ -9340,6 +9781,14 @@ function buildMarkdown() {
      当成既成事实写进文件。中局导出要说清楚是未完局。 */
   lines.push('- 结局：' + (S.winner === 'good' ? '好人阵营胜利'
     : S.winner === 'wolf' ? '狼人阵营胜利' : '未完局'));
+  if (S.sheriffLog && S.sheriffLog.length) {
+    const sl = S.sheriffLog[0];
+    const shp = sl.sheriff != null ? seatOf(sl.sheriff) : null;
+    lines.push('- 警长：' + (sl.sheriff != null
+      ? sl.sheriff + ' 号 ' + (shp ? shp.name : '')
+      : (sl.reason === 'tie' ? '平票，无警长'
+        : sl.reason === 'nobody' ? '无人上警，无警长' : '未选出')));
+  }
   lines.push('- Token：' + (CALL_STATS.prompt + CALL_STATS.completion).toLocaleString());
   lines.push('');
   lines.push('## 座位与身份');
@@ -9348,13 +9797,21 @@ function buildMarkdown() {
   lines.push('| --- | --- | --- | --- | --- |');
   S.seats.forEach(s => {
     const m = ROLE_META[s.role];
-    lines.push('| ' + s.seat + ' | ' + s.name + ' | ' + m.name + ' | ' +
+    lines.push('| ' + s.seat + ' | ' + s.name + (S.sheriff === s.seat ? ' 🎖️' : '') +
+      ' | ' + m.name + ' | ' +
       (m.camp === 'wolf' ? '狼人' : '好人') + ' | ' + (s.alive ? '存活' : (s.outReason || '出局')) + ' |');
   });
   lines.push('');
   lines.push('## 发言与事件');
   lines.push('');
   S.log.forEach(l => {
+    if (l.kind === 'sheriff') {
+      lines.push('### 第 ' + l.round + ' 天 · 警长选举');
+      lines.push('');
+      lines.push(l.seat + ' 号 ' + l.name + ' 当选警长。');
+      lines.push('');
+      return;
+    }
     if (l.kind === 'speech') {
       lines.push('### 第 ' + l.round + ' 天 · ' + l.seat + ' 号 ' + l.name);
       lines.push('');
