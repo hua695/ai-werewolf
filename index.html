@@ -1048,6 +1048,20 @@ body.day-mode{background:linear-gradient(180deg,#0b0f17 0%,#10141d 100%)}
 .msg.speech.wolf{border-left-color:rgba(207,68,51,.45)}
 .msg.speech.wolf .s-name{color:#dd7f6d}
 .msg.speech .typing{display:inline-flex;gap:4px;vertical-align:middle}
+/* ══════════ 发言立场配色 ══════════
+   进攻红、辩护蓝、分析灰。左侧色条 + 标签配色，
+   扫一眼就知道这一轮谁在打谁、谁在挡。
+   不加背景色——九个消息块各自染色会把记录栏变成调色板。 */
+.msg.st-atk .s-tag{color:#e0917f;background:rgba(207,68,51,.14);border-color:rgba(207,68,51,.3)}
+.msg.st-def .s-tag{color:#8fb8e0;background:rgba(96,138,205,.16);border-color:rgba(96,138,205,.32)}
+.msg.st-ana .s-tag{color:#9aa7bb;background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.1)}
+.msg.st-atk{border-left-color:rgba(207,68,51,.6)!important}
+.msg.st-def{border-left-color:rgba(96,138,205,.6)!important}
+.msg.st-ana{border-left-color:rgba(122,135,158,.45)!important}
+body.is-day .msg.st-atk .s-tag{color:#c0492f;background:rgba(207,68,51,.1);border-color:rgba(207,68,51,.26)}
+body.is-day .msg.st-def .s-tag{color:#3d6ea6;background:rgba(96,138,205,.12);border-color:rgba(96,138,205,.28)}
+body.is-day .msg.st-ana .s-tag{color:#6b7688;background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.1)}
+
 .msg.speech .typing i{width:5px;height:5px;border-radius:50%;background:var(--gold);animation:typingDot 1.2s ease-in-out infinite}
 .msg.speech .typing i:nth-child(2){animation-delay:.15s}
 .msg.speech .typing i:nth-child(3){animation-delay:.3s}
@@ -3159,6 +3173,13 @@ function readCfg() {
 }
 let CFG = readCfg();
 
+/* ?mock=1 时开假模型。放在这里是因为 callLLM 可能在页面早期就被调用，
+   而配置项要等 DOM 就绪才读得到。 */
+if (typeof window !== 'undefined' &&
+    /[?&]mock=1\b/.test(String(window.location.search || ''))) {
+  window.__MOCK_LLM = true;
+}
+
 function saveCfg() {
   try {
     const c = readCfg();
@@ -3800,7 +3821,73 @@ function taskTemp(t) {
   return typeof v === 'number' ? v : null;
 }
 
+/* ════════════════════════════════════════════════════════════
+   假模型（只给开发和测试用，正式对局完全不经过这里）
+   ────────────────────────────────────────────────────────────
+   为什么要有这个：每次改提示词都要打完整局才能看效果，
+   一局 9 人打 3~4 天要 4~8 分钟，调一轮参数就是十分钟。
+   假模型把整局压到十几秒，用来抓运行时错误和验证流程走不走得通。
+
+   ⚠ 它能验什么、不能验什么：
+     ✓ 流程是否会卡死、解析是否会抛错、分支是否都走到了
+     ✗ 真模型会不会选某个立场 —— 那必须打真实接口才知道
+   用假模型测出"分布正常"没有任何意义，别拿它当行为证据。
+
+   开启方式（二选一）：
+     window.__MOCK_LLM = true
+     页面 URL 带 ?mock=1
+   ════════════════════════════════════════════════════════════ */
+function mockLLMReply(a) {
+  const user = String(a.user || '');
+  /* 从提示里抓候选座位号。所有涉及"选人"的 prompt 都会写成
+     「1 号 甲、2 号 乙」或「从下列玩家中选一个：3 号 …」，
+     直接扫数字就能拿到合法候选，不必为每个任务单独造数据。 */
+  const seats = [];
+  let m;
+  const re = /(\d{1,2})\s*号/g;
+  while ((m = re.exec(user))) {
+    const n = Number(m[1]);
+    if (n >= 1 && n <= 12 && seats.indexOf(n) < 0) seats.push(n);
+  }
+  const any = () => seats.length ? seats[Math.floor(Math.random() * seats.length)] : 1;
+
+  /* 定立场：六成给裸座位号（复刻真模型最常见的回答），两成辩护，一成分析 */
+  if (user.indexOf('定立场') >= 0) {
+    const r = Math.random();
+    if (r < 0.6) return String(any());
+    if (r < 0.8) return 'defense';
+    return 'analysis';
+  }
+  /* 上警：约一半的人上 */
+  if (user.indexOf('警长选举') >= 0) {
+    return Math.random() < 0.5
+      ? '上警\n我来当警长，能把票压到一个点上。先怀疑 ' + any() + ' 号。'
+      : '不上警';
+  }
+  if (a.task === 'witch') return '不用药';
+  if (a.task === 'speak') {
+    const t = any();
+    const lines = [
+      '我先听完，现在还看不清。',
+      '有一个人的发言和票型对不上，先记一笔。',
+      '别急着归票，先把昨天的线理清楚。',
+      '这一轮我表个态，剩下的听完再说。'
+    ];
+    return '【心声】先看看他们怎么说。\n【发言】' +
+      lines[Math.floor(Math.random() * lines.length)] + '【票向 ' + t + ' 号】';
+  }
+  return String(any());
+}
+
 async function callLLM({ system, user, runId, maxTokens = 480, spec, temp, task, onDelta, probe }) {
+  /* 假模型短路：放在所有逻辑之前，一行业务代码都不跑，
+     也就不会因为模型池为空、Key 过期之类的问题中断测试。 */
+  if (typeof window !== 'undefined' && window.__MOCK_LLM) {
+    const txt = mockLLMReply({ system, user, maxTokens, task });
+    if (onDelta) onDelta(txt, false);
+    await new Promise(r => setTimeout(r, 6));   // 留一点异步，避免击穿调用栈
+    return txt;
+  }
   const cfg = CFG;
   const origin = spec || null;
 
@@ -6085,6 +6172,7 @@ function msgSpeech(p, tag) {
 
   return {
     onStream,
+    node,     // 让调用方能给整条消息挂类名（立场配色用）
     set(text, whisper) {
       node.classList.remove('speaking');
       const plain = String(text == null ? '' : text);
@@ -6825,6 +6913,12 @@ const TTS = (() => {
        夜聊改成并行生成之后演出循环跑得飞快，这个窗口被放大到
        "整段耳语只剩最后一句"——所以这一拍必须等。 */
     async waitDone(maxMs) {
+      /* 环境里根本没有可用语音时，speechSynthesis 在无声设备上会一直
+         报 speaking=true，于是每一句发言都要干等到超时上限（14~16 秒）。
+         九个人打三天就是好几分钟的纯等待，看起来像卡死。
+         两种情况直接不等：快进模式、或本机压根没法播。 */
+      if (typeof FAST !== 'undefined' && FAST) return;
+      if (!canNative() && !canOnline()) return;
       const t0 = Date.now();
       await pSleep(300);
       while (busy() && Date.now() - t0 < (maxMs || 14000)) {
@@ -7179,6 +7273,8 @@ function initGame(seats, specs) {
     wolfPlan: null,     // 狼队夜里商量好的白天归票目标
     sheriff: null,      // 警长座位号。null = 本局没选出来 / 已关闭该机制
     sheriffLog: [],     // 警长选举记录，复盘用
+    stances: {},        // 本轮每人声明的发言立场 { seat: {kind, target} }
+    stanceHistory: [],  // 历轮立场快照 [{round, map}]，用来回答"上一轮谁在推我"
     revealed: false,
     speaking: null,
     winner: null,
@@ -7848,9 +7944,16 @@ async function sheriffElection(id) {
     S.speaking = null; renderSeats();
     if (want) {
       runners.push({ seat: p.seat, speech });
-      /* 上警的人当众说话，进消息流——这是第一天最重要的信息 */
+      /* 上警的人当众说话，进消息流——这是第一天最重要的信息。
+         同时必须写进 S.log：只进消息流的话，之后所有轮次的 AI
+         在 publicState 里都看不到这段发言，等于开局最重要的信息
+         对推理完全不可见。观众看得到、AI 看不到，是最糟的一种不一致。 */
       const card = msgSpeech(p, '上警');
       card.set(clip(speech, 120));
+      S.log.push({
+        round: 1, kind: 'speech', seat: p.seat, name: p.name,
+        text: '【上警】' + speech, tag: '上警'
+      });
       SFX.tick();
       await speakGap();
     }
@@ -7996,8 +8099,26 @@ async function dayPhase(id) {
   }
   await beat(Math.max(200, paceMs() / 2));
 
-  /* ---- 依次发言 ---- */
-  const order = speechOrder();
+  /* ---- 定立场 → 按立场重排 → 依次发言 ----
+     顺序是 defense → attack → analysis。辩护必须排在继续进攻之前，
+     否则被点名的人还没开口，后面的人已经把他按死了，
+     整轮变成围攻，看不到任何反驳。 */
+  await declareStances(id);
+  await gate(id);
+  const baseOrder = speechOrder();
+  const ordered = groupByStance(baseOrder, S.stances || {});
+  /* 沉默的人不发言，但票照投——不能因为不想说就免掉一张票 */
+  const silent = ordered.filter(p => (S.stances[p.seat] || {}).kind === 'pass');
+  const order = ordered.filter(p => (S.stances[p.seat] || {}).kind !== 'pass');
+  if (silent.length) {
+    msgEvent('·', silent.map(p => p.seat + ' 号 ' + p.name).join('、') +
+      ' 选择沉默，本轮不发言。', '');
+    S.log.push({
+      round: S.round, kind: 'silent',
+      seats: silent.map(p => p.seat),
+      text: '沉默不发言'
+    });
+  }
   const total = order.length;
   let exploded = false;   // 狼人自爆会直接跳过投票入夜
   let prefetched = null;  // 预取的下一位发言：{ i, take() }
@@ -8026,7 +8147,9 @@ async function dayPhase(id) {
     S.speaking = p.seat; renderSeats();
     setProgress((i + 0.2) / total * 0.82);
 
-    const card = msgSpeech(p);
+    const stInfo = STANCE_META[(S.stances[p.seat] || {}).kind] || STANCE_META.analysis;
+    const card = msgSpeech(p, stInfo.icon + ' ' + stInfo.label);
+    if (card.node) card.node.classList.add('st-' + stInfo.cls);
     let wantExplode = false;
 
     const parts = speechPrompt(p, i, total);
@@ -8129,7 +8252,11 @@ async function dayPhase(id) {
       if (parts2.whisper) p.whispers.push({ round: S.round, text: parts2.whisper });
       // 只把真正的公开发言写进记录：占位话和残留心声都不该进公开上下文
       if (parts2.body && !/^（/.test(parts2.body) && !/心\s*声/.test(parts2.body)) {
-        S.log.push({ round: S.round, kind: 'speech', seat: p.seat, name: p.name, text: parts2.body, whisper: parts2.whisper });
+        S.log.push({
+          round: S.round, kind: 'speech', seat: p.seat, name: p.name,
+          text: parts2.body, whisper: parts2.whisper,
+          stance: (S.stances[p.seat] || {}).kind || 'analysis'
+        });
       }
 
       /* 狼人自爆：翻牌出局，白天到此为止（真人狼在发言框里输【自爆】也能触发） */
@@ -8308,13 +8435,21 @@ function wasCheckedPublicly(seat) {
    全部原料都来自公开发言，不看底牌、不看心声，所以给谁看都不算泄密。
    判断方式是逐句扫座位号，同一句里必须出现带敌意的措辞才算数，
    一句里既说号码又给出否定态度的（「不像狼」「我信他」）直接排除。 */
-function accusedTally() {
-  const SUS = /怀疑|可疑|像狼|是狼|狼人|狼面|查杀|不信|有问题|不对劲|解释不清|心虚|最像|挂票|出他|投/;
+function accusedTally(round) {
+  /* 「推」「出局」「归票」是进攻发言最常见的说法——
+     立场机制上线后，attack 的发言基本都是「我要推 5 号」，
+     原来这张表里没有「推」，于是系统完全看不出谁在攻击谁，
+     被点名的人也永远收不到「你被点名了」的提示，
+     辩护因此一次都没被选过（实测 defense=0）。 */
+  const SUS = /怀疑|可疑|像狼|是狼|狼人|狼面|查杀|不信|有问题|不对劲|解释不清|心虚|最像|挂票|出他|投|推|出局|归票|票给|定他|踩/;
   const CLEAR = /不像狼|不是狼|不怀疑|我信他|像好人|是好人|站得住|没问题|先留着/;
   const alive = new Set(aliveSeats().map(s => s.seat));
   const by = new Map();
+  /* round 省略时看"本轮"。定立场的时候要用上一轮——
+     本轮还没人开口，问"谁点了你的名"只能从上一轮或上警发言里找。 */
+  const wantRound = (round == null) ? S.round : round;
   for (const it of (S.log || [])) {
-    if (it.kind !== 'speech' || it.round !== S.round) continue;
+    if (it.kind !== 'speech' || it.round !== wantRound) continue;
     const text = String(it.text || '');
     for (const sent of text.split(/[。！？；\n]/)) {
       if (!sent) continue;
@@ -8443,11 +8578,353 @@ function speechPrompt(p, i, total) {
         '这种情况可以只输出【自爆】两个字翻牌，直接进入天黑，打断他们的讨论；也可以照常发言，你自己权衡。');
     }
   }
+  /* ---- 立场约束 ----
+     这是把"各说各话"变成"互相咬"的那一步。
+     没有这一段，模型会把九个人的发言写成九篇平行小作文：
+     每篇都在分析局面，没有一篇在回应上一句指控。 */
+  const st = (S.stances && S.stances[p.seat]) || { kind: 'analysis', target: null };
+  /* 点名者用 pushedBy（上一轮声明的攻击目标），不用正则扫文本。
+     正则那套在这里会漏：8 个进攻只认出 1 个被点名的人，
+     结果辩护发言常常不知道自己在回应谁，写成一堆空话。 */
+  const pushers = pushedBy(p.seat);
+  if (st.kind === 'defense') {
+    parts.push('【你的立场：辩护】你这一轮是来挡的，不是来推人的。' +
+      (pushers.length
+        ? '点名要推你的人：' + pushers.map(x => x + ' 号 ' + nameOf(x)).join('、') +
+          '。必须逐条回应他们，说清他们指出的问题为什么不成立。'
+        : '上一轮有人对你的发言表达了怀疑，先把那件事说清楚。') +
+      '禁止只说"我是好人"这类空话，必须给出可验证的东西：' +
+      '时间线、票型、你上一轮说过的原话。');
+  } else if (st.kind === 'attack') {
+    const tgt = st.target != null ? st.target : null;
+    parts.push('【你的立场：进攻】你这一轮是来推人的。' +
+      (tgt != null
+        ? '目标锁定 ' + tgt + ' 号 ' + nameOf(tgt) + '。'
+        : '选定一个目标。') +
+      '必须给出具体依据：他哪一句话自相矛盾、哪一次投票和别人不同步、' +
+      '或者他的发言跟已知事实对不上。' +
+      '禁止只写"我感觉他有点像"，也禁止同时怀疑三四个人——那是没立场。');
+  } else {
+    parts.push('【你的立场：分析】你这一轮只做归纳，不做归票。' +
+      '把场上已经出现的矛盾理清楚：谁和谁的发言互相冲突、谁的票向变了、' +
+      '哪条线索还没人跟。可以指出疑点，但不许点名要求别人投谁。' +
+      '这一段的价值是替观众（和其他玩家）整理信息，不是再添一个怀疑对象。');
+  }
+
   parts.push('输出两段，严格按格式，不要多写：');
   parts.push('【心声】一句不超过 18 字的真实想法');
-  parts.push('【发言】你这一轮的正式发言，结合公开信息给出判断和最怀疑的人');
+  parts.push('【发言】你这一轮的正式发言，按其上立场的要求写');
   parts.push('直接输出这两段，不要写思考过程，不要提"作为XX身份"。');
   return parts;
+}
+
+/* ════════════════════════════════════════════════════════════
+   发言立场：attack / defense / analysis / pass
+   ────────────────────────────────────────────────────────────
+   purpose      把"各说各话"改成"互相咬"。模型天然倾向输出一篇
+                完整小作文，读完别人的指控也不正面回应，
+                于是每天九段平行独白，没有一条线索被真正追下去。
+                加了立场声明后，被点名的人必须先辩护，
+                进攻的人必须点名给依据，分析的人不许归票。
+   experience   观众能看清"这一轮是谁在攻、谁在挡、谁在躲"，
+                而不是九个人轮流说"我觉得 5 号有点像"。
+   输入        存活玩家、各自底牌、最近一轮被点名情况
+   输出        S.stances = { seat: { kind, target } }
+                发言顺序按 defense → attack → analysis 重排
+   边界        pass 不发言但照常投票（不能因为不想说就免掉票）
+                全员 pass → 直接进投票，不卡流程
+                解析失败 → 默认 analysis（最保守，不误导别人归票）
+   failure     立场请求全部失败 → 全部按 analysis 走，流程照旧
+   ────────────────────────────────────────────────────────────
+   为什么先声明再说话：不预声明就没法重排顺序（辩护必须排在
+   继续进攻之前，否则被点名的人还没开口，后面的人已经把他按死了）。
+   预声明用极短输出（一行几个字），实测成本约等于整局调用的 1%。
+   ════════════════════════════════════════════════════════════ */
+const STANCE_META = {
+  attack:   { label: '进攻', icon: '⚔', cls: 'atk' },
+  defense:  { label: '辩护', icon: '🛡', cls: 'def' },
+  analysis: { label: '分析', icon: '🔍', cls: 'ana' },
+  pass:     { label: '沉默', icon: '·', cls: 'pas' }
+};
+const STANCE_ORDER = ['defense', 'attack', 'analysis'];
+
+/* 定立场只给最省的状态：存活名单 + 最近一轮谁被点了名。
+   不塞完整的 publicState —— 那里面是全部历史发言，
+   prompt 会翻十倍，而决定"要不要辩、要攻谁"用不到那么细。 */
+function stanceContext(p) {
+  const lines = [];
+  lines.push('【存活】' + aliveSeats().map(s => s.seat + ' 号 ' + s.name).join('、'));
+  /* 被推情况直接从上一轮声明的攻击目标算，不读发言文本 */
+  const hist = S.stanceHistory || [];
+  const prev = hist.length ? hist[hist.length - 1] : null;
+  if (prev && prev.map) {
+    const pushMap = {};
+    Object.keys(prev.map).forEach(k => {
+      const v = prev.map[k];
+      if (v && v.kind === 'attack' && v.target != null) {
+        (pushMap[v.target] = pushMap[v.target] || []).push(Number(k));
+      }
+    });
+    const ranked = Object.keys(pushMap).map(Number)
+      .sort((a, b) => pushMap[b].length - pushMap[a].length || a - b).slice(0, 4);
+    if (ranked.length) {
+      lines.push('【上一轮谁在推谁】' + ranked.map(seat =>
+        seat + ' 号 ' + nameOf(seat) + '（被 ' +
+        pushMap[seat].map(x => x + ' 号').join('、') + ' 推）').join('；'));
+    }
+    const mine = pushMap[p.seat] || [];
+    if (mine.length) {
+      lines.push('【你被推了】' + mine.map(x => x + ' 号 ' + nameOf(x)).join('、') +
+        ' 上一轮明确要推你出局。' +
+        (mine.length >= 2
+          ? '两个以上的人在推你，这一轮几乎必须 defense：不先洗干净，' +
+            '票只会越滚越多，你活不过今天。'
+          : '这一轮建议 defense，先把这件事处理掉，再谈别的。'));
+    }
+  }
+  const wolfMates = isWolfRole(p.role)
+    ? aliveSeats().filter(x => x.seat !== p.seat && isWolfRole(x.role)).map(x => x.seat + ' 号')
+    : [];
+  /* 定立场故意不用完整 sysPrompt（省 token），但那份 prompt 是唯一
+     告诉模型"我是几号"的地方。少了这一行，模型根本不知道自己是谁，
+     实测会把座位号填成自己（raw="7" 的 7 号、raw="8" 的 8 号），
+     解析时被 allowed 列表过滤掉，白丢两个进攻，全退化成 analysis。
+     补一行最便宜的身份锚点。 */
+  lines.push('【你是】' + p.seat + ' 号 ' + p.name + '。不要把你自己当成目标。');
+  lines.push('【你的身份】' + ROLE_META[p.role].name +
+    (wolfMates.length ? '（狼队友：' + wolfMates.join('、') + '）' : ''));
+  return lines.join('\n');
+}
+
+/* 立场解析。第一版只认英文 attack 5，结果模型用中文回「进攻 5 号」，
+   全部落到兜底的 analysis —— 实测一局里 8 个 analysis / 1 个 attack，
+   机制等于没生效。中文模型必须按中文词解析。 */
+/* 谁在推谁：直接读上一轮声明的 attack 目标。
+   不要再拿 accusedTally 的正则去猜——实测 8 个人声明 attack，
+   正则只认出 1 个被点名的人（发言里座位号和敌意词的相对位置太散），
+   于是"你被点名了"这个判断几乎永远为假，辩护一次都没被选过。
+   声明的目标本身就是结构化数据，精确、免费、不受文风影响。 */
+function pushedBy(seat) {
+  const hist = S.stanceHistory || [];
+  const prev = hist.length ? hist[hist.length - 1] : null;
+  if (!prev) return [];
+  const out = [];
+  Object.keys(prev.map || {}).forEach(k => {
+    const v = prev.map[k];
+    if (v && v.kind === 'attack' && v.target === seat) out.push(Number(k));
+  });
+  return out.sort((a, b) => a - b);
+}
+
+function parseStance(raw, allowed) {
+  const t = String(raw || '').toLowerCase().trim();
+  const pick = v => allowed.includes(Number(v)) ? Number(v) : null;
+
+  /* 模型最常见的回答其实是裸座位号：提示里写的是「attack 座位号」，
+     它直接把座位号填进去，只回一个 "9"。
+     实测一局 8 个人里 7 个回的就是纯数字，第一版解析全判成 analysis，
+     机制等于没生效。所以裸数字要优先识别成进攻。 */
+  const bare = t.match(/^\s*(\d{1,2})\s*号?\s*$/);
+  if (bare) {
+    const b = pick(bare[1]);
+    /* 裸数字不在候选里（模型填了自己，或者填了一个已经出局的人），
+       原来会一路掉到最后兜底的 analysis —— 这个人明明想进攻，
+       只是号码写错了，却连进攻意图一起丢掉。实测第 3 天 9 号回
+       "attack 8"，8 号已经出局，于是整条记录变成 analysis。
+       保留 attack，目标留空，交给 declareStances 补一个存活者。 */
+    return { kind: 'attack', target: b };
+  }
+
+  /* 再找目标座位号：英文 attack 后面、或中文进攻类动词后面。
+     rawTgt 是"模型写的号码"，tgt 是"号码有效所以能当目标"。
+     两个分开存，才能区分「没提目标」和「提了但目标已经出局」——
+     后者仍然是进攻，不该被降级。 */
+  let rawTgt = null;
+  let m = t.match(/attack\s*[:：]?\s*(\d{1,2})/);
+  if (!m) m = t.match(/(?:进攻|攻击|推|票|出|怀疑)\s*[:：]?\s*(\d{1,2})\s*号?/);
+  if (m) rawTgt = Number(m[1]);
+  const tgt = rawTgt != null ? pick(rawTgt) : null;
+
+  /* 关键词优先级：谁先出现就按谁算。defense 和 pass 要排在
+     analysis 前面——「我本来想分析，但还是辩护一下」里两者都有。 */
+  const has = re => re.test(t);
+  if (rawTgt != null && (has(/attack|进攻|攻击/) || !has(/defense|辩护|辩解|response/))) {
+    /* 给了号码又没明说辩护，按进攻处理；号码无效时 tgt 为 null，上层补目标 */
+    return { kind: 'attack', target: tgt };
+  }
+  if (has(/\bdefense\b|辩护|辩解|回应|挡/)) return { kind: 'defense', target: null };
+  if (has(/\bpass\b|沉默|不发言|跳过|跳过发言/)) return { kind: 'pass', target: null };
+  if (has(/\banalysis\b|分析|归纳|梳理/)) return { kind: 'analysis', target: null };
+  if (rawTgt != null) return { kind: 'attack', target: tgt };
+  return { kind: 'analysis', target: null };   // 完全解析不出来走最保守的
+}
+
+async function declareStances(id) {
+  const alive = aliveSeats().sort((a, b) => a.seat - b.seat);
+  S.stances = {};
+  if (!alive.length) return;
+  setPhasePill('vote', '定立场');
+  setStatus('每人先定这一轮的立场…', true);
+  await beat(Math.max(220, paceMs() / 2));
+
+  const me = alive.find(isMe);
+  if (me) {
+    const allowed = alive.filter(x => x.seat !== me.seat).map(x => x.seat);
+    /* AI 那边已经改用 pushedBy（读上一轮声明的攻击目标）判断"有没有被推"，
+       人类这里还留着 accusedTally 的正则版。那套正则实测在真实发言里
+       几乎认不出被点名的人（座位号和敌意措辞的相对位置太散），
+       于是人类永远看到"没人点你名"，提示和 AI 的实际处境对不上。
+       两边统一成同一个数据源。 */
+    const accSeats = pushedBy(me.seat);
+    const pickKind = await askHumanSafe(id, 'pick', {
+      title: '第 ' + S.round + ' 天 · 你要什么立场',
+      tip: accSeats.length
+        ? (accSeats.map(x => x + ' 号').join('、') + ' 点了你的名，辩护能扳回来')
+        : '没人点你名。进攻要给出依据，分析只做归纳不归票',
+      opts: [
+        { key: 'attack', label: '⚔ 进攻：点名一个人' },
+        { key: 'defense', label: '🛡 辩护：回应点名' },
+        { key: 'analysis', label: '🔍 分析：只做归纳' },
+        { key: 'pass', label: '· 沉默：这轮不说' }
+      ]
+    });
+    let kind = ['attack', 'defense', 'analysis', 'pass'].includes(pickKind) ? pickKind : 'analysis';
+    let target = null;
+    if (kind === 'attack') {
+      const t = await askHumanSafe(id, 'pick', {
+        title: '你要攻谁',
+        tip: '选一个座位，发言时给出具体依据',
+        cands: alive.filter(x => allowed.includes(x.seat)),
+        passLabel: '改成分析'
+      });
+      if (t == null) kind = 'analysis'; else target = Number(t);
+    }
+    S.stances[me.seat] = { kind, target };
+  }
+
+  const others = alive.filter(p => !isMe(p));
+  const res = await pool(others, CFG.conc, async p => {
+    await gate(id);
+    const allowed = alive.filter(x => x.seat !== p.seat).map(x => x.seat);
+    /* 按处境给一个默认动作，而不是让模型在四个选项里自由挑。
+       自由挑的结果实测过两次：先是全选 analysis（都躲），
+       把进攻写成常态之后又变成全选 attack（没人挡）。
+       两个极端都不是真实牌局。真实牌局里默认动作是唯一确定的：
+       被人推 → 先辩护；没人推 → 推一个。 */
+    const pushed = pushedBy(p.seat);
+    const recommend = pushed.length ? 'defense' : 'attack';
+    try {
+      const raw = await callLLM({
+        /* 这里刻意不用完整的 sysPrompt：那一份带上角色说明、语气要求、
+           输出契约，一份就一两千 token，每天每人来一次纯属浪费。
+           决定"攻还是辩"用不到人设和文风，只要知道身份和名字。
+           这一句替换把立场预扫的成本压到整局的百分之一量级。 */
+        system: '你在玩狼人杀，' +
+          (isWolfRole(p.role) ? '你的身份是狼人，必须隐藏。' : '你的身份是好人。') +
+          '严格只输出一行指定内容，不要解释，不要标点以外的任何字。',
+        user: [
+          '【第 ' + S.round + ' 天 · 定立场】',
+          stanceContext(p),
+          recommend === 'defense'
+            ? '【今天你的默认动作是辩护】' + pushed.map(x => x + ' 号').join('、') +
+              ' 点名要推你出局。不先把这件事说清楚，你后面每一轮都会被同一件事打。' +
+              '除非你手里有更硬的牌要打，否则选 defense。'
+            : '【今天你的默认动作是进攻】没人点名推你，你就该主动推一个。' +
+              '只做分析、不推人的发言这一轮没有价值——票合不到一起，白天就空转了。',
+          '输出一行，从下面四种里选一个，不要写理由：',
+          /* 推荐项排第一，格式提示也按推荐项写。
+             原来四种选项固定按 attack 打头、末尾又提示"写出座位号数字"，
+             模型看到数字就只回一个裸数字 —— 实测被推的人 rec=defense
+             却仍然回 "9"，辩护一次都没落地。提示的收尾格式比开头的
+             推荐语权重更高，这里是那个 bug 的根源。 */
+          ...(recommend === 'defense'
+            ? ['defense         ← 回应推你的人（今天你该选这个）',
+               'attack 座位号   ← 推一个人出局',
+               'analysis        ← 只做归纳不推人',
+               'pass            ← 这一轮不发言（算划水）',
+               '今天请只输出 defense 这一个词。']
+            : ['attack 座位号   ← 推这个人出局（今天你该选这个）',
+               'defense         ← 回应推你的人',
+               'analysis        ← 只做归纳不推人',
+               'pass            ← 这一轮不发言（算划水）',
+               '输出 attack 加座位号，例如：attack 5'])
+        ].filter(Boolean).join('\n\n'),
+        runId: id,
+        maxTokens: 32,
+        spec: p.spec,
+        task: 'vote'
+      });
+      const parsed = parseStance(raw, allowed);
+      /* rec 一起带出去：用来验证"推荐了但模型没听"和"根本没推荐"是两回事。
+         这两种情况要修的地方完全不同（前者改措辞，后者查数据）。 */
+      return { seat: p.seat, ...parsed, rec: recommend, pushed: pushed.length,
+        raw: String(raw || '').slice(0, 40) };
+    } catch (e) {
+      if (e instanceof StopGame) throw e;
+      return { seat: p.seat, kind: 'analysis', target: null };
+    }
+  });
+
+  res.filter(Boolean).forEach(r => {
+    let kind = r.kind, target = r.target;
+    /* 声明了 attack 却拿不到有效目标（模型填了自己、填了已出局的人，
+       或者只回了「进攻」两个字）。原来这种记录会带着 target=null
+       一路走下去，发言阶段只能"自己选一个目标"，统计上和 analysis
+       没有区别，等于这个人的进攻立场白声明了。
+       这里补一个确定的目标，让 attack 真的落在某个人身上。
+       用座位号取模而不是随机，是为了同一局重跑时分布可复现。 */
+    if (kind === 'attack' && target == null) {
+      const cands = alive.filter(x => x.seat !== r.seat).map(x => x.seat).sort((a, b) => a - b);
+      if (cands.length) target = cands[(r.seat + S.round) % cands.length];
+      else kind = 'analysis';
+    }
+    /* 被两个人以上点名要推：按规则强制辩护。
+       这不是猜意图，是一条明写的规则——你已经是当天的头号嫌疑，
+       不先把自己洗干净就继续攻击别人，现实里不会发生。
+       只被一个人推的仍然保留选择权（可以反打）。 */
+    if (r.pushed >= 2 && kind !== 'defense') {
+      godMsg(r.seat + ' 号被 ' + r.pushed + ' 人推，按规则强制改为辩护', '🎙');
+      kind = 'defense';
+      target = null;
+    }
+    S.stances[r.seat] = { kind, target, raw: r.raw || '',
+      rec: r.rec || '', pushed: r.pushed || 0 };
+    /* 把原始回复留在神视角日志里：立场分布一旦异常，
+       第一件事就是看模型到底回了什么，而不是猜解析逻辑对不对。 */
+    if (CFG.godLog && r.raw) {
+      godMsg('立场 ' + r.seat + ' 号 → ' + r.kind +
+        (r.target != null ? ' ' + r.target : '') + '　原话：' + r.raw, '🎙');
+    }
+  });
+
+  /* 给观众看一眼这一轮的力量分布，也是复盘时的关键数据 */
+  const cnt = { attack: 0, defense: 0, analysis: 0, pass: 0 };
+  Object.values(S.stances).forEach(v => { if (cnt[v.kind] != null) cnt[v.kind]++; });
+  const bits = [];
+  if (cnt.defense) bits.push(cnt.defense + ' 人辩护');
+  if (cnt.attack) bits.push(cnt.attack + ' 人进攻');
+  if (cnt.analysis) bits.push(cnt.analysis + ' 人分析');
+  if (cnt.pass) bits.push(cnt.pass + ' 人沉默');
+  if (bits.length) msgEvent('🎙️', '本轮立场：' + bits.join(' · '), '');
+  const snap = JSON.parse(JSON.stringify(S.stances));
+  S.log.push({ round: S.round, kind: 'stance', map: snap });
+  /* 入历史。下一轮 pushedBy() 读的就是这一条，
+     所以必须在算完本轮立场之后再 push，顺序不能反。 */
+  S.stanceHistory.push({ round: S.round, map: snap });
+}
+
+/* 按立场重排。组间顺序 defense → attack → analysis，
+   组内保留原来的死左起排，保证座位公平性不被立场打乱。 */
+function groupByStance(baseOrder, stances) {
+  const rank = k => {
+    const i = STANCE_ORDER.indexOf(k);
+    return i < 0 ? 99 : i;
+  };
+  return baseOrder.slice().sort((a, b) => {
+    const ka = (stances[a.seat] || {}).kind || 'analysis';
+    const kb = (stances[b.seat] || {}).kind || 'analysis';
+    return rank(ka) - rank(kb) || (a.seat - b.seat);
+  });
 }
 
 /* 焦点发言模式：9 人以上每天只让一部分人发言。
@@ -8934,6 +9411,8 @@ async function resumeGame(snap) {
      新局由 newState 初始化，这里管的是续跑旧存档。 */
   if (!Array.isArray(S.sheriffLog)) S.sheriffLog = [];
   if (S.sheriff === undefined) S.sheriff = null;
+  if (!S.stances || typeof S.stances !== 'object') S.stances = {};
+  if (!Array.isArray(S.stanceHistory)) S.stanceHistory = [];
   /* 存档里记的是当时那台机器的模型分配。池子换过就按当前的重新摊一遍，
      否则续跑会打到已经删掉的模型上。 */
   S.seats.forEach((s, i) => { if (!s.human) s.spec = (specs && specs[i]) || s.spec; });
@@ -9007,10 +9486,27 @@ async function resumeGame(snap) {
   }
 }
 
+/* 对局轮次上限。正常对局 3~6 天，给到 15 是纯保险。
+   主循环原来是 while(true) 且没有任何出口保卫——只要出现
+   "平票→无人出局→夜里也没人死亡"这类僵局，对局就会永远转下去，
+   既不结束也不报错，只能靠玩家手动停止。实测遇到过一次跑满 15 分钟
+   没结束的情况。这里加一道硬闸：超轮就按当前局面判负给狼（他们
+   拖住了整局），并明确播报原因，不让它静默空转。 */
+const MAX_ROUNDS = 15;
+
 /* 一夜一天的循环。存档写在这里的回合边界上，续跑也是从这里重新进。 */
 async function runRoundLoop(id) {
   while (true) {
     await gate(id);
+    if (S.round > MAX_ROUNDS) {
+      const wolvesLeft = aliveSeats().filter(s => isWolfRole(s.role)).length;
+      S.winner = wolvesLeft ? 'wolf' : 'good';
+      msgEvent('⏳', '对局超过 ' + MAX_ROUNDS + ' 天仍未分出胜负，按当前场面判定：' +
+        (S.winner === 'wolf' ? '狼人阵营存活，判狼人胜。' : '好人阵营获胜。'), 'hot');
+      S.history.push('对局超过 ' + MAX_ROUNDS + ' 天，强制结束');
+      godMsg('触发轮次上限保护（' + MAX_ROUNDS + ' 天），已强制结束', '⚠️');
+      break;
+    }
     saveSnap();
     setPhasePill('night', '夜晚');
     await nightPhase(id);
@@ -9813,7 +10309,9 @@ function buildMarkdown() {
       return;
     }
     if (l.kind === 'speech') {
-      lines.push('### 第 ' + l.round + ' 天 · ' + l.seat + ' 号 ' + l.name);
+      const sm = STANCE_META[l.stance];
+      lines.push('### 第 ' + l.round + ' 天 · ' + l.seat + ' 号 ' + l.name +
+        (sm ? ' · ' + sm.label : ''));
       lines.push('');
       lines.push(l.text);
       lines.push('');
